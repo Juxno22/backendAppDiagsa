@@ -1248,7 +1248,7 @@ router.get('/departamentos', async (req, res) => {
     }
 });
 // GET /api/rh/notificaciones/generar-todos — solo para inicializar
-router.get('/rh/notificaciones/generar-todos', async (req, res) => {
+router.get('/rh/notificaciones/generar-todos', authMiddleware, async (req, res) => {
     try {
         const result = await generarNotificaciones();
         res.json(result);
