@@ -156,7 +156,7 @@ function getDiasVacaciones() {
 function getPeriodosDeEvaluacion() {
   return new Promise((resolve, reject) => {
     connection.query(
-      "SELECT periodo_evaluacionesId, periodo FROM periodoEvaluaciones ORDER BY periodo_evaluacionesId",
+      "SELECT periodo_evaluacionesId, periodo FROM periodoevaluaciones ORDER BY periodo_evaluacionesId",
       (error, results) => {
         if (error) {
           console.error("Error al obtener los periodos de evaluacion:", error);

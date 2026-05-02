@@ -266,7 +266,7 @@ async function createEvaluacion(evalData) {
     }
     //validar el periodo de evaluacion
     const periodo = await query(
-        "SELECT periodo_evaluacionesId FROM periodoEvaluaciones WHERE periodo_evaluacionesId = ?",
+        "SELECT periodo_evaluacionesId FROM periodoevaluaciones WHERE periodo_evaluacionesId = ?",
         [periodo_evaluacionesId],
     );
     if (periodo.length === 0) {
@@ -317,7 +317,7 @@ async function getEvaluacionesByEmpleado(usuarioId) {
             e.comentario_siguiente_evaluacion,
             e.comentario_final
         FROM evaluaciones e
-        LEFT JOIN periodoEvaluaciones pe ON e.periodo_evaluacionesId = pe.periodo_evaluacionesId
+        LEFT JOIN periodoevaluaciones pe ON e.periodo_evaluacionesId = pe.periodo_evaluacionesId
         WHERE e.usuarioId = ?
         ORDER BY e.fecha_evaluacion DESC
     `;
