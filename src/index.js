@@ -7,7 +7,7 @@ const apiRoutes = require('./routes/index');
 
 const server = express();
 const PORT   = process.env.PORT || 3000;
-app.use(cors({
+server.use(cors({
     origin: [
         'https://diagsa.vercel.app',
         'http://localhost:3001', // para desarrollo local
