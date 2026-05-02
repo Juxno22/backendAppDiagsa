@@ -10,7 +10,7 @@ const query = (sql, values = []) => {
 //Plantillas
 async function getAllPlantillas() {
     const plantillas = await query(`
-        SELECT plantillaId, nombre, descripcion, activa, createdAt
+        SELECT plantillaId, nombre, descripcion, createdAt
         FROM evaluacion_plantillas ORDER BY createdAt DESC
     `);
     return await Promise.all(
