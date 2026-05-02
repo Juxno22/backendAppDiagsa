@@ -5,4 +5,3 @@ dist
 dataSchema.sql
 schema.sql
 package-lock.json
-package.json
