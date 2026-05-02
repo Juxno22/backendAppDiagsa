@@ -96,7 +96,7 @@ async function getVacacionesByEmpleado(usuarioId) {
  * @returns {Object} { success, message, vacacionesId? }
  */
 async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacacionesId) {
-    if (new Date(fechaInicio) >= new Date(fechaFin)) {
+    if (new Date(fechaInicio) > new Date(fechaFin)) {
         return { success: false, message: 'La fecha de inicio debe ser anterior a la fecha de fin' };
     }
 
