@@ -4,13 +4,13 @@ const bcrypt = require("bcrypt");
 const connection = require("../config/connection");
 const { authMiddleware, soloSupervisor } = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
-const { generarWordEvaluacion } = require('../models/generarWordEvaluacion');
+const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const {
     generarNotificaciones,
     getNotificacionesRH,
     marcarComoLeida,
     contarNoLeidas,
-} = require('../models/notificacionesRH');
+} = require("../models/notificacionesRH");
 const {
     getAllPlantillas,
     getPlantillaById,
@@ -36,7 +36,7 @@ const {
     getTipos,
     getSueldos,
     generarUsuario,
-    getDepartamentos
+    getDepartamentos,
 } = require("../models/createUser");
 const {
     getEmpleadoById,
@@ -61,9 +61,13 @@ const {
     getEvaluacionById,
     getAllEvaluaciones,
 } = require("../models/evaluaciones");
-const { generarExcelVacaciones } = require('../models/generarExcelVacaciones');
+const { generarExcelVacaciones } = require("../models/generarExcelVacaciones");
 // POST /api/rh/empleados/:id/foto
-router.post("/rh/empleados/:id/foto", authMiddleware, upload.single("foto"), async (req, res) => {
+router.post(
+    "/rh/empleados/:id/foto",
+    authMiddleware,
+    upload.single("foto"),
+    async (req, res) => {
         try {
             const { id } = req.params;
 
@@ -75,7 +79,11 @@ router.post("/rh/empleados/:id/foto", authMiddleware, upload.single("foto"), asy
             }
 
             // Subir a Cloudinary con el ID del usuario como nombre
-            const url = await subirImagen(req.file.buffer, 'diagsa_empleados', `empleado_${id}`);
+            const url = await subirImagen(
+                req.file.buffer,
+                "diagsa_empleados",
+                `empleado_${id}`,
+            );
 
             // Guardar URL en la BD
             await new Promise((resolve, reject) => {
@@ -1188,31 +1196,38 @@ router.get("/supervisor/vacaciones/todas", authMiddleware, async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 });
-router.get('/evaluaciones/:id/word', authMiddleware, async (req, res) => {
+router.get("/evaluaciones/:id/word", authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
         const evaluacion = await getEvaluacionById(id);
         if (!evaluacion) {
-            return res.status(404).json({ success: false, message: 'Evaluación no encontrada' });
+            return res
+                .status(404)
+                .json({ success: false, message: "Evaluación no encontrada" });
         }
 
         const buffer = await generarWordEvaluacion(evaluacion);
 
-        const nombreArchivo = `evaluacion_${evaluacion.empleado_apPaterno || 'empleado'}_${id}.docx`;
+        const nombreArchivo = `evaluacion_${evaluacion.empleado_apPaterno || "empleado"}_${id}.docx`;
 
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-        res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        );
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${nombreArchivo}"`,
+        );
         res.send(buffer);
-
     } catch (error) {
-        console.error('Error al generar Word:', error);
+        console.error("Error al generar Word:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
 // GET /api/rh/notificaciones — lista notificaciones pendientes
-router.get('/rh/notificaciones', authMiddleware, async (req, res) => {
+router.get("/rh/notificaciones", authMiddleware, async (req, res) => {
     try {
-        const soloNoLeidas = req.query.noLeidas === 'true';
+        const soloNoLeidas = req.query.noLeidas === "true";
         const notificaciones = await getNotificacionesRH(soloNoLeidas);
         res.json({ success: true, data: notificaciones });
     } catch (error) {
@@ -1221,7 +1236,7 @@ router.get('/rh/notificaciones', authMiddleware, async (req, res) => {
 });
 
 // GET /api/rh/notificaciones/count — badge contador
-router.get('/rh/notificaciones/count', authMiddleware, async (req, res) => {
+router.get("/rh/notificaciones/count", authMiddleware, async (req, res) => {
     try {
         const total = await contarNoLeidas();
         res.json({ success: true, data: { total } });
@@ -1231,15 +1246,19 @@ router.get('/rh/notificaciones/count', authMiddleware, async (req, res) => {
 });
 
 // PATCH /api/rh/notificaciones/:id/leer — marcar como leída
-router.patch('/rh/notificaciones/:id/leer', authMiddleware, async (req, res) => {
-    try {
-        await marcarComoLeida(Number(req.params.id));
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-router.get('/departamentos', async (req, res) => {
+router.patch(
+    "/rh/notificaciones/:id/leer",
+    authMiddleware,
+    async (req, res) => {
+        try {
+            await marcarComoLeida(Number(req.params.id));
+            res.json({ success: true });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    },
+);
+router.get("/departamentos", async (req, res) => {
     try {
         const departamentos = await getDepartamentos();
         res.json({ success: true, data: departamentos });
@@ -1248,20 +1267,27 @@ router.get('/departamentos', async (req, res) => {
     }
 });
 // GET /api/rh/notificaciones/generar-todos — solo para inicializar
-router.get('/rh/notificaciones/generar-todos', authMiddleware, async (req, res) => {
-    try {
-        const result = await generarNotificaciones();
-        res.json(result);
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
+router.get(
+    "/rh/notificaciones/generar-todos",
+    authMiddleware,
+    async (req, res) => {
+        try {
+            const result = await generarNotificaciones();
+            res.json(result);
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    },
+);
 // GET /api/rh/cumpleanos — cumpleaños del mes actual agrupados por día
-router.get('/rh/cumpleanos', authMiddleware, async (req, res) => {
+router.get("/rh/cumpleanos", authMiddleware, async (req, res) => {
     try {
-        const mes = req.query.mes ? Number(req.query.mes) : new Date().getMonth() + 1;
+        const mes = req.query.mes
+            ? Number(req.query.mes)
+            : new Date().getMonth() + 1;
         const rows = await new Promise((resolve, reject) => {
-            connection.query(`
+            connection.query(
+                `
                 SELECT
                     usuarioId, nombre, apPaterno, apMaterno,
                     foto, fecha_nacimiento,
@@ -1275,7 +1301,10 @@ router.get('/rh/cumpleanos', authMiddleware, async (req, res) => {
                 WHERE MONTH(fecha_nacimiento) = ?
                   AND fecha_nacimiento IS NOT NULL
                 ORDER BY DAY(fecha_nacimiento)
-            `, [mes], (err, results) => err ? reject(err) : resolve(results));
+            `,
+                [mes],
+                (err, results) => (err ? reject(err) : resolve(results)),
+            );
         });
         res.json({ success: true, data: rows });
     } catch (error) {
@@ -1284,10 +1313,11 @@ router.get('/rh/cumpleanos', authMiddleware, async (req, res) => {
 });
 
 // GET /api/rh/cumpleanos/manana — para el badge/notificación
-router.get('/rh/cumpleanos/manana', authMiddleware, async (req, res) => {
+router.get("/rh/cumpleanos/manana", authMiddleware, async (req, res) => {
     try {
         const rows = await new Promise((resolve, reject) => {
-            connection.query(`
+            connection.query(
+                `
                 SELECT
                     usuarioId, nombre, apPaterno, apMaterno,
                     foto, fecha_nacimiento, departamento,
@@ -1296,37 +1326,69 @@ router.get('/rh/cumpleanos/manana', authMiddleware, async (req, res) => {
                 WHERE DAY(fecha_nacimiento)   = DAY(DATE_ADD(CURDATE(), INTERVAL 1 DAY))
                   AND MONTH(fecha_nacimiento) = MONTH(DATE_ADD(CURDATE(), INTERVAL 1 DAY))
                   AND fecha_nacimiento IS NOT NULL
-            `, (err, results) => err ? reject(err) : resolve(results));
+            `,
+                (err, results) => (err ? reject(err) : resolve(results)),
+            );
         });
         res.json({ success: true, data: rows, total: rows.length });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
-router.get('/rh/vacaciones/:id/excel', authMiddleware, async (req, res) => {
+router.get("/rh/vacaciones/:id/excel", authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
         const rows = await new Promise((resolve, reject) => {
-            connection.query(`
-                SELECT v.*,
+            connection.query(
+                `SELECT v.*,
                     u.nombre, u.apPaterno, u.apMaterno,
                     u.usuarioId, u.departamento, u.fechaContratacion,
                     p.nombre_puesto,
-                    TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) AS anios_servicio
-                FROM vacaciones v
-                LEFT JOIN usuarios u ON v.usuarioId = u.usuarioId
-                LEFT JOIN puesto   p ON u.puestoId  = p.puestoId
-                WHERE v.vacacionesId = ?
-            `, [id], (err, r) => err ? reject(err) : resolve(r));
+                    TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) AS anios_servicio,
+                    -- Días LFT según antigüedad
+                    CASE
+                        WHEN TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) >= 25 THEN 32
+                        WHEN TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) >= 20 THEN 30
+                        WHEN TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) >= 15 THEN 28
+                        WHEN TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) >= 10 THEN 24
+                        WHEN TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) >= 5  THEN 18
+                        WHEN TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) >= 4  THEN 16
+                        WHEN TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) >= 3  THEN 14
+                        WHEN TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) >= 2  THEN 10
+                        WHEN TIMESTAMPDIFF(YEAR, u.fechaContratacion, CURDATE()) >= 1  THEN 8
+                    ELSE 0
+                    END AS dias_vacaciones_lft,
+                    -- Días usados en el año actual
+                    COALESCE((
+                        SELECT SUM(dias_solicitados) FROM vacaciones
+                        WHERE usuarioId = u.usuarioId
+                        AND estado_final = 'Aceptadas'
+                         AND YEAR(fecha_inicio_vacaciones) = YEAR(CURDATE())
+                    ), 0) AS dias_usados
+                    FROM vacaciones v
+                    LEFT JOIN usuarios u ON v.usuarioId = u.usuarioId
+                    LEFT JOIN puesto   p ON u.puestoId  = p.puestoId
+                    WHERE v.vacacionesId = ?`,
+                [id],
+                (err, r) => (err ? reject(err) : resolve(r)),
+            );
         });
+        const row = rows[0];
+        row.dias_restantes = (row.dias_vacaciones_lft || 0) - (row.dias_usados || 0);
 
-        if (!rows.length) return res.status(404).json({ success: false, message: 'Vacación no encontrada' });
+        if (!rows.length)
+            return res
+                .status(404)
+                .json({ success: false, message: "Vacación no encontrada" });
 
         const buffer = await generarExcelVacaciones(rows[0]);
-        const nombre = `vacaciones_${rows[0].apPaterno || 'empleado'}_${id}.xlsx`;
+        const nombre = `vacaciones_${rows[0].apPaterno || "empleado"}_${id}.xlsx`;
 
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        );
+        res.setHeader("Content-Disposition", `attachment; filename="${nombre}"`);
         res.send(buffer);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
