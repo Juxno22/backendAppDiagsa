@@ -183,18 +183,13 @@ async function getAllEmpleados() {
  */
 async function updateEmpleado(usuarioId, datosNuevos) {
     const camposPermitidos = [
-        "nombre",
-        "apPaterno",
-        "apMaterno",
-        "puestoId",
-        "tipoId",
-        "sueldoId",
-        "sueldo",
-        "rolId",
-        "fechaContratacion",
-        "departamento",
-        "jefe_inmediato",
-    ];
+    "nombre", "apPaterno", "apMaterno",
+    "puestoId", "tipoId", "sueldoId", "sueldo", "rolId",
+    "fechaContratacion", "departamento", "jefe_inmediato",
+    "genero", "estado_civil", "numero_seguro_social",
+    "RFC", "fecha_nacimiento", "curp", "celular",
+    "es_padre_madre", "fecha_contrato_indeterminado_3m",
+];
     //filtrar solo los campos permitidos
     const camposAActualizar = Object.keys(datosNuevos).filter((k) =>
         camposPermitidos.includes(k),
