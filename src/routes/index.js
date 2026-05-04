@@ -5,6 +5,11 @@ const connection = require("../config/connection");
 const { authMiddleware, soloSupervisor } = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
+const { generarWordPermiso } = require('../models/generarWordPermiso');
+const {
+    crearPermiso, getPermisosByEmpleado, getTodosPermisos,
+    getPermisoById, responderPermiso, deletePermiso,
+} = require('../models/permisos');
 const {
     generarNotificaciones,
     getNotificacionesRH,
@@ -1390,6 +1395,73 @@ router.get("/rh/vacaciones/:id/excel", authMiddleware, async (req, res) => {
         );
         res.setHeader("Content-Disposition", `attachment; filename="${nombre}"`);
         res.send(buffer);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+// Empleado solicita permiso
+router.post('/empleados/permisos', authMiddleware, async (req, res) => {
+    try {
+        const result = await crearPermiso(req.user.usuarioId, req.body);
+        res.status(201).json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Empleado ve sus permisos
+router.get('/empleados/permisos', authMiddleware, async (req, res) => {
+    try {
+        const permisos = await getPermisosByEmpleado(req.user.usuarioId);
+        res.json({ success: true, data: permisos });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// RH/Supervisor ve todos los permisos
+router.get('/rh/permisos', authMiddleware, async (req, res) => {
+    try {
+        const permisos = await getTodosPermisos();
+        res.json({ success: true, data: permisos });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// RH responde permiso
+router.patch('/rh/permisos/:id/responder', authMiddleware, async (req, res) => {
+    try {
+        const { estado } = req.body;
+        if (!['autorizado', 'rechazado'].includes(estado))
+            return res.status(400).json({ success: false, message: 'Estado inválido' });
+        const result = await responderPermiso(Number(req.params.id), estado);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Descargar Word del permiso
+router.get('/rh/permisos/:id/word', authMiddleware, async (req, res) => {
+    try {
+        const permiso = await getPermisoById(Number(req.params.id));
+        if (!permiso) return res.status(404).json({ success: false, message: 'Permiso no encontrado' });
+        const buffer = await generarWordPermiso(permiso);
+        const nombre = `permiso_${permiso.apPaterno || 'empleado'}_${req.params.id}.docx`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+        res.send(buffer);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Eliminar permiso
+router.delete('/rh/permisos/:id', authMiddleware, async (req, res) => {
+    try {
+        const result = await deletePermiso(Number(req.params.id));
+        res.json(result);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
