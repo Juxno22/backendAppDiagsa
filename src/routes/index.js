@@ -1596,15 +1596,13 @@ router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
     try {
         if (req.user.rolId !== 3)
             return res.status(403).json({ success: false, message: 'Acceso no autorizado' });
- 
         // Registrar log
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || null;
         await registrarLog(req.user.usuarioId, req.user.usuario, ip);
- 
+        console.log('req.user =>', req.user); 
         const buffer = await generarExcelBD();
         const fecha  = new Date().toISOString().split('T')[0];
         const nombre = `DIAGSA_BD_${fecha}.xlsx`;
- 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
         res.send(buffer);

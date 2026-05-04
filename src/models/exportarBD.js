@@ -1,18 +1,15 @@
 // src/models/exportarBD.js
 const ExcelJS = require('exceljs');
 const connection = require('../config/connection');
-
 const query = (sql, values = []) => new Promise((resolve, reject) => {
     connection.query(sql, values, (err, results) => err ? reject(err) : resolve(results));
 });
-
 async function registrarLog(usuarioId, usuario, ip) {
     await query(
         'INSERT INTO export_logs (usuarioId, usuario, ip) VALUES (?, ?, ?)',
-        [usuarioId, usuario, ip || null]
+        [usuarioId, usuario , ip || null]
     );
 }
-
 async function getExportLogs() {
     return await query(`
         SELECT l.logId, l.usuarioId, l.usuario, l.fecha, l.ip,
@@ -23,11 +20,9 @@ async function getExportLogs() {
         LIMIT 200
     `);
 }
-
 async function generarExcelBD() {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'DIAGSA';
-
     const fontBold   = (size = 10) => ({ name: 'Arial', size, bold: true });
     const fontNormal = (size = 10) => ({ name: 'Arial', size });
     const fillGray   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4A4A4A' } };
@@ -36,7 +31,6 @@ async function generarExcelBD() {
         top:    { style: 'thin' }, left:   { style: 'thin' },
         bottom: { style: 'thin' }, right:  { style: 'thin' },
     };
-
     function styleHeader(row, fill) {
         row.eachCell(cell => {
             cell.font      = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -46,7 +40,6 @@ async function generarExcelBD() {
         });
         row.height = 20;
     }
-
     function styleRow(row) {
         row.eachCell(cell => {
             cell.font      = fontNormal(9);
@@ -55,12 +48,10 @@ async function generarExcelBD() {
         });
         row.height = 16;
     }
-
     function fmtDate(d) {
         if (!d) return '';
         return new Date(d).toLocaleDateString('es-MX', { timeZone: 'UTC' });
     }
-
     // ── HOJA 1: Empleados ───────────────────────────────────────
     const wsEmp = wb.addWorksheet('Empleados');
     wsEmp.columns = [
@@ -71,7 +62,6 @@ async function generarExcelBD() {
         { width: 20 }, { width: 14 }, { width: 16 }, { width: 20 },
         { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 },
     ];
-
     const hdrEmp = wsEmp.addRow([
         'ID', 'Nombre', 'Ap. Paterno', 'Ap. Materno', 'Usuario',
         'Departamento', 'Puesto', 'Rol', 'Fecha Contratación', 'Sueldo',
@@ -81,7 +71,6 @@ async function generarExcelBD() {
         'T. Playera', 'T. Pantalón', 'T. Calzado', 'T. Faja', 'T. Guantes',
     ]);
     styleHeader(hdrEmp, fillRed);
-
     const empleados = await query(`
         SELECT u.usuarioId, u.nombre, u.apPaterno, u.apMaterno, u.usuario,
                u.departamento, p.nombre_puesto, r.nombre_rol,
@@ -96,7 +85,6 @@ async function generarExcelBD() {
         LEFT JOIN roles  r ON u.rolId    = r.rolId
         ORDER BY u.apPaterno, u.nombre
     `);
-
     for (const e of empleados) {
         const row = wsEmp.addRow([
             e.usuarioId, e.nombre, e.apPaterno, e.apMaterno, e.usuario,
@@ -110,7 +98,6 @@ async function generarExcelBD() {
         ]);
         styleRow(row);
     }
-
     // ── HOJA 2: Vehículos ───────────────────────────────────────
     const wsVeh = wb.addWorksheet('Vehículos');
     wsVeh.columns = [
@@ -118,13 +105,11 @@ async function generarExcelBD() {
         { width: 14 }, { width: 14 }, { width: 10 }, { width: 12 },
         { width: 16 }, { width: 20 },
     ];
-
     const hdrVeh = wsVeh.addRow([
         'ID Empleado', 'Nombre', 'Ap. Paterno', 'Tiene Vehículo',
         'Tipo', 'Marca', 'Modelo', 'Año', 'Placas', 'No. Serie',
     ]);
     styleHeader(hdrVeh, fillRed);
-
     const vehiculos = await query(`
         SELECT v.*, u.nombre, u.apPaterno
         FROM vehiculos v
@@ -139,7 +124,6 @@ async function generarExcelBD() {
         ]);
         styleRow(row);
     }
-
     // ── HOJA 3: Hijos ───────────────────────────────────────────
     const wsHijos = wb.addWorksheet('Hijos');
     wsHijos.columns = [
@@ -149,7 +133,6 @@ async function generarExcelBD() {
         'ID Empleado', 'Nombre Empleado', 'Ap. Paterno', 'Nombre Hijo', 'Fecha Nacimiento',
     ]);
     styleHeader(hdrHijos, fillRed);
-
     const hijos = await query(`
         SELECT h.*, u.nombre, u.apPaterno
         FROM hijos h
@@ -162,7 +145,6 @@ async function generarExcelBD() {
         ]);
         styleRow(row);
     }
-
     // ── HOJA 4: Vacaciones ──────────────────────────────────────
     const wsVac = wb.addWorksheet('Vacaciones');
     wsVac.columns = [
@@ -174,7 +156,6 @@ async function generarExcelBD() {
         'Días', 'Estado Final', 'Resp. Jefe', 'Resp. RH',
     ]);
     styleHeader(hdrVac, fillRed);
-
     const vacaciones = await query(`
         SELECT v.vacacionesId, u.nombre, u.apPaterno,
                v.fecha_inicio_vacaciones, v.fecha_fin_vacaciones,
@@ -193,7 +174,6 @@ async function generarExcelBD() {
         ]);
         styleRow(row);
     }
-
     // ── HOJA 5: Evaluaciones ────────────────────────────────────
     const wsEval = wb.addWorksheet('Evaluaciones');
     wsEval.columns = [
@@ -205,7 +185,6 @@ async function generarExcelBD() {
         'Periodo', 'Promedio', 'Recontratación', 'Comentario Final',
     ]);
     styleHeader(hdrEval, fillRed);
-
     const evaluaciones = await query(`
         SELECT e.evaluacionesId, u.nombre, u.apPaterno,
                e.fecha_evaluacion, pe.periodo,
@@ -223,7 +202,6 @@ async function generarExcelBD() {
         ]);
         styleRow(row);
     }
-
     // ── HOJA 6: Permisos ────────────────────────────────────────
     const wsPerm = wb.addWorksheet('Permisos');
     wsPerm.columns = [
@@ -235,7 +213,6 @@ async function generarExcelBD() {
         'Fecha Permiso', 'Días/Hrs', 'Goce Sueldo', 'Estado', 'Motivo',
     ]);
     styleHeader(hdrPerm, fillRed);
-
     const permisos = await query(`
         SELECT p.permisoId, u.nombre, u.apPaterno,
                p.tipo, p.fecha_permiso,
@@ -254,7 +231,6 @@ async function generarExcelBD() {
         ]);
         styleRow(row);
     }
-
     // ── HOJA 7: Logs de exportación ─────────────────────────────
     const wsLogs = wb.addWorksheet('Historial Exportaciones');
     wsLogs.columns = [
@@ -264,7 +240,6 @@ async function generarExcelBD() {
         'ID', 'Usuario', 'Nombre', 'Fecha y Hora', 'IP',
     ]);
     styleHeader(hdrLogs, fillGray);
-
     const logs = await query(`
         SELECT l.logId, l.usuario, u.nombre, u.apPaterno, l.fecha, l.ip
         FROM export_logs l
@@ -280,8 +255,6 @@ async function generarExcelBD() {
         ]);
         styleRow(row);
     }
-
     return await wb.xlsx.writeBuffer();
 }
-
 module.exports = { generarExcelBD, registrarLog, getExportLogs };
