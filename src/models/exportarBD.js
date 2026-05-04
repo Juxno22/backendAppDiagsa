@@ -4,16 +4,20 @@ const connection = require('../config/connection');
 const query = (sql, values = []) => new Promise((resolve, reject) => {
     connection.query(sql, values, (err, results) => err ? reject(err) : resolve(results));
 });
-const [user] = await query(
-  'SELECT usuario FROM usuarios WHERE usuarioId = ?',
-  [req.user.usuarioId]
-);
 async function registrarLog(usuarioId, usuario, ip) {
+    let usuarioFinal = usuario;
+    if (!usuarioFinal) {
+        const results = await query(
+            'SELECT usuario FROM usuarios WHERE usuarioId = ?',
+            [usuarioId]
+        )
+        usuarioFinal = results[0]?.usuario || 'desconocido';
+    }
     await query(
         'INSERT INTO export_logs (usuarioId, usuario, ip) VALUES (?, ?, ?)',
-        [usuarioId, usuario , ip || null]
+        [usuarioId, usuarioFinal, ip || null]
     );
-}
+};
 async function getExportLogs() {
     return await query(`
         SELECT l.logId, l.usuarioId, l.usuario, l.fecha, l.ip,
