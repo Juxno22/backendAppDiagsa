@@ -6,6 +6,7 @@ const { authMiddleware, soloSupervisor } = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
+const { generarExcelBD, registrarLog, getExportLogs } = require('../models/exportarBD');
 const {
     crearPermiso, getPermisosByEmpleado, getTodosPermisos,
     getPermisoById, responderPermiso, deletePermiso,
@@ -57,6 +58,10 @@ const {
     getDiasVacacionesLFT,
     deleteEmpleado,
     getTodasVacaciones,
+    upsertVehiculo,
+    getHijosByEmpleado,
+    addHijo,
+    deleteHijo,
 } = require("../models/empleado");
 const {
     getSecciones,
@@ -1492,6 +1497,130 @@ router.delete('/rh/hijos/:id', authMiddleware, async (req, res) => {
     try {
         const result = await deleteHijo(Number(req.params.id));
         res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+// GET /api/rh/cumpleanos/hijos — cumpleaños de hijos del mes
+router.get('/rh/cumpleanos/hijos', authMiddleware, async (req, res) => {
+    try {
+        const mes = req.query.mes ? Number(req.query.mes) : new Date().getMonth() + 1;
+        const rows = await new Promise((resolve, reject) => {
+            connection.query(`
+                SELECT
+                    h.hijoId, h.nombre, h.fecha_nacimiento,
+                    DAY(h.fecha_nacimiento)   AS dia,
+                    MONTH(h.fecha_nacimiento) AS mes,
+                    TIMESTAMPDIFF(YEAR, h.fecha_nacimiento, CURDATE()) AS edad,
+                    u.nombre        AS padre_nombre,
+                    u.apPaterno     AS padre_apPaterno,
+                    u.apMaterno     AS padre_apMaterno,
+                    u.departamento,
+                    u.foto
+                FROM hijos h
+                LEFT JOIN usuarios u ON h.usuarioId = u.usuarioId
+                WHERE MONTH(h.fecha_nacimiento) = ?
+                  AND h.fecha_nacimiento IS NOT NULL
+                ORDER BY DAY(h.fecha_nacimiento)
+            `, [mes], (err, r) => err ? reject(err) : resolve(r));
+        });
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// GET /api/rh/cumpleanos/hijos/manana
+router.get('/rh/cumpleanos/hijos/manana', authMiddleware, async (req, res) => {
+    try {
+        const rows = await new Promise((resolve, reject) => {
+            connection.query(`
+                SELECT
+                    h.hijoId, h.nombre, h.fecha_nacimiento,
+                    TIMESTAMPDIFF(YEAR, h.fecha_nacimiento, CURDATE()) + 1 AS edad,
+                    u.nombre    AS padre_nombre,
+                    u.apPaterno AS padre_apPaterno,
+                    u.departamento, u.foto
+                FROM hijos h
+                LEFT JOIN usuarios u ON h.usuarioId = u.usuarioId
+                WHERE DAY(h.fecha_nacimiento)   = DAY(DATE_ADD(CURDATE(), INTERVAL 1 DAY))
+                  AND MONTH(h.fecha_nacimiento) = MONTH(DATE_ADD(CURDATE(), INTERVAL 1 DAY))
+                  AND h.fecha_nacimiento IS NOT NULL
+            `, (err, r) => err ? reject(err) : resolve(r));
+        });
+        res.json({ success: true, data: rows, total: rows.length });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+// ── Cambio de contraseña — cualquier usuario autenticado ────
+router.patch('/usuarios/cambiar-contrasena', authMiddleware, async (req, res) => {
+    try {
+        const { contrasenaActual, contrasenaNueva } = req.body;
+        const usuarioId = req.user.usuarioId;
+ 
+        if (!contrasenaActual || !contrasenaNueva)
+            return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
+ 
+        if (contrasenaNueva.length < 6)
+            return res.status(400).json({ success: false, message: 'La nueva contraseña debe tener al menos 6 caracteres' });
+ 
+        // Verificar contraseña actual
+        const rows = await new Promise((resolve, reject) => {
+            connection.query('SELECT contrasenia FROM usuarios WHERE usuarioId = ?',
+                [usuarioId], (err, r) => err ? reject(err) : resolve(r));
+        });
+ 
+        if (!rows.length)
+            return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+ 
+        const match = await bcrypt.compare(contrasenaActual, rows[0].contrasenia);
+        if (!match)
+            return res.status(401).json({ success: false, message: 'La contraseña actual es incorrecta' });
+ 
+        // Guardar nueva contraseña
+        const hash = await bcrypt.hash(contrasenaNueva, 10);
+        await new Promise((resolve, reject) => {
+            connection.query('UPDATE usuarios SET contrasenia = ? WHERE usuarioId = ?',
+                [hash, usuarioId], (err) => err ? reject(err) : resolve(null));
+        });
+ 
+        res.json({ success: true, message: 'Contraseña actualizada correctamente' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+ 
+// ── Exportar BD a Excel — solo RH ──────────────────────────
+router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
+    try {
+        if (req.user.rolId !== 3)
+            return res.status(403).json({ success: false, message: 'Acceso no autorizado' });
+ 
+        // Registrar log
+        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || null;
+        await registrarLog(req.user.usuarioId, req.user.usuario, ip);
+ 
+        const buffer = await generarExcelBD();
+        const fecha  = new Date().toISOString().split('T')[0];
+        const nombre = `DIAGSA_BD_${fecha}.xlsx`;
+ 
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('Error al exportar BD:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+ 
+// ── Historial de exportaciones ──────────────────────────────
+router.get('/rh/exportar-bd/logs', authMiddleware, async (req, res) => {
+    try {
+        if (req.user.rolId !== 3)
+            return res.status(403).json({ success: false, message: 'Acceso no autorizado' });
+        const logs = await getExportLogs();
+        res.json({ success: true, data: logs });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
