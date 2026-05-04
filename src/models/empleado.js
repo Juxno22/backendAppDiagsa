@@ -21,25 +21,19 @@ const query = (sql, values = []) => {
 async function getEmpleadoById(usuarioId) {
     const sql = `
         SELECT
-            u.usuarioId,
-            u.nombre,
-            u.apPaterno,
-            u.apMaterno,
-            u.usuario,
-            u.fechaContratacion,
-            u.departamento,
-            u.jefe_inmediato,
-            p.nombre_puesto,
-            t.nombre_tipo,
-            s.cantidad_sueldo,
-            r.nombre_rol,
-            u.puestoId,
-            u.tipoId,
-            u.sueldoId,
-            u.rolId,
-            u.foto,
-            u.sueldo,
-            -- Días usados en el periodo actual
+            u.usuarioId, u.nombre, u.apPaterno, u.apMaterno, u.usuario,
+            u.fechaContratacion, u.departamento, u.jefe_inmediato,
+            p.nombre_puesto, t.nombre_tipo, s.cantidad_sueldo,
+            r.nombre_rol, u.puestoId, u.tipoId, u.sueldoId, u.rolId,
+            u.foto, u.sueldo,
+            -- Nuevos campos personales
+            u.genero, u.estado_civil, u.numero_seguro_social,
+            u.RFC, u.fecha_nacimiento, u.curp, u.celular,
+            u.es_padre_madre, u.fecha_contrato_indeterminado_3m,
+            -- Uniformes
+            u.talla_playera, u.talla_pantalon, u.talla_calzado,
+            u.talla_faja, u.talla_guantes,
+            -- Días usados
             COALESCE((
                 SELECT SUM(DATEDIFF(v.fecha_fin_vacaciones, v.fecha_inicio_vacaciones) + 1)
                 FROM vacaciones v
@@ -48,21 +42,34 @@ async function getEmpleadoById(usuarioId) {
                   AND v.fecha_inicio_vacaciones >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)
             ), 0) AS dias_usados
         FROM usuarios u
-        LEFT JOIN puesto   p ON u.puestoId  = p.puestoId
-        LEFT JOIN tipos    t ON u.tipoId    = t.tipoId
-        LEFT JOIN sueldos  s ON u.sueldoId  = s.sueldoId
-        LEFT JOIN roles    r ON u.rolId     = r.rolId
+        LEFT JOIN puesto  p ON u.puestoId = p.puestoId
+        LEFT JOIN tipos   t ON u.tipoId   = t.tipoId
+        LEFT JOIN sueldos s ON u.sueldoId = s.sueldoId
+        LEFT JOIN roles   r ON u.rolId    = r.rolId
         WHERE u.usuarioId = ?
     `;
     const rows = await query(sql, [usuarioId]);
     if (rows.length === 0) return null;
-
+ 
     const emp = rows[0];
-    // Calcular días LFT y restantes
     const dias = calcularDiasVacacionesLFT(emp.fechaContratacion);
     const diasRestantes = Math.max(0, dias - emp.dias_usados);
-
-    return { ...emp, dias_vacaciones_lft: dias, dias_restantes: diasRestantes };
+ 
+    // Cargar vehículo e hijos
+    const vehiculo = await query(
+        'SELECT * FROM vehiculos WHERE usuarioId = ? LIMIT 1', [usuarioId]
+    );
+    const hijos = await query(
+        'SELECT * FROM hijos WHERE usuarioId = ? ORDER BY hijoId', [usuarioId]
+    );
+ 
+    return {
+        ...emp,
+        dias_vacaciones_lft: dias,
+        dias_restantes: diasRestantes,
+        vehiculo: vehiculo[0] || null,
+        hijos: hijos || [],
+    };
 }
 /**
  * Obtener todas las solicitudes de vacaciones de un empleado,
@@ -189,7 +196,9 @@ async function updateEmpleado(usuarioId, datosNuevos) {
     "genero", "estado_civil", "numero_seguro_social",
     "RFC", "fecha_nacimiento", "curp", "celular",
     "es_padre_madre", "fecha_contrato_indeterminado_3m",
-];
+    "talla_playera", "talla_pantalon", "talla_calzado",
+    "talla_faja", "talla_guantes",
+    ];
     //filtrar solo los campos permitidos
     const camposAActualizar = Object.keys(datosNuevos).filter((k) =>
         camposPermitidos.includes(k),
@@ -635,6 +644,52 @@ async function getTodasVacaciones() {
         ORDER BY v.vacacionesId DESC
     `);
 }
+async function upsertVehiculo(usuarioId, datos) {
+    const existe = await query(
+        'SELECT vehiculoId FROM vehiculos WHERE usuarioId = ?', [usuarioId]
+    );
+    const {
+        tiene_vehiculo, tipo, marca, modelo,
+        anio, color, placas, num_serie,
+    } = datos;
+ 
+    if (existe.length > 0) {
+        await query(`
+            UPDATE vehiculos SET
+                tiene_vehiculo = ?, tipo = ?, marca = ?, modelo = ?,
+                anio = ?, color = ?, placas = ?, num_serie = ?
+            WHERE usuarioId = ?
+        `, [tiene_vehiculo, tipo || null, marca || null, modelo || null,
+            anio || null, color || null, placas || null, num_serie || null,
+            usuarioId]);
+    } else {
+        await query(`
+            INSERT INTO vehiculos
+                (usuarioId, tiene_vehiculo, tipo, marca, modelo, anio, color, placas, num_serie)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [usuarioId, tiene_vehiculo, tipo || null, marca || null, modelo || null,
+            anio || null, color || null, placas || null, num_serie || null]);
+    }
+    return { success: true };
+}
+async function getHijosByEmpleado(usuarioId) {
+    return await query(
+        'SELECT * FROM hijos WHERE usuarioId = ? ORDER BY hijoId', [usuarioId]
+    );
+}
+ 
+async function addHijo(usuarioId, nombre, fecha_nacimiento) {
+    const result = await query(
+        'INSERT INTO hijos (usuarioId, nombre, fecha_nacimiento) VALUES (?, ?, ?)',
+        [usuarioId, nombre, fecha_nacimiento || null]
+    );
+    return { success: true, hijoId: result.insertId };
+}
+ 
+async function deleteHijo(hijoId) {
+    await query('DELETE FROM hijos WHERE hijoId = ?', [hijoId]);
+    return { success: true };
+}
 module.exports = {
     getEmpleadoById,
     getVacacionesByEmpleado,
@@ -648,5 +703,9 @@ module.exports = {
     getVacacionesPendientes,
     getNotificacionesByEmpleado,
     getDiasVacacionesLFT,
-    getTodasVacaciones
+    getTodasVacaciones,
+    upsertVehiculo,
+    getHijosByEmpleado,
+    addHijo,
+    deleteHijo,
 };

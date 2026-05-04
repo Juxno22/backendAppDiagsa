@@ -1466,4 +1466,34 @@ router.delete('/rh/permisos/:id', authMiddleware, async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 });
+// Guardar vehículo
+router.post('/rh/empleados/:id/vehiculo', authMiddleware, async (req, res) => {
+    try {
+        const result = await upsertVehiculo(Number(req.params.id), req.body);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Agregar hijo
+router.post('/rh/empleados/:id/hijos', authMiddleware, async (req, res) => {
+    try {
+        const { nombre, fecha_nacimiento } = req.body;
+        const result = await addHijo(Number(req.params.id), nombre, fecha_nacimiento);
+        res.status(201).json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Eliminar hijo
+router.delete('/rh/hijos/:id', authMiddleware, async (req, res) => {
+    try {
+        const result = await deleteHijo(Number(req.params.id));
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
 module.exports = router;
