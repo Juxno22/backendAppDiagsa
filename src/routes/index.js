@@ -74,6 +74,13 @@ const {
     getAllEvaluaciones,
 } = require("../models/evaluaciones");
 const { generarExcelVacaciones } = require("../models/generarExcelVacaciones");
+const {
+    solicitarVacante,
+    getVacantesSolicitante,
+    getAllVacantes,
+    gestionarVacanteRH,
+    deleteVacante,
+} = require('../models/vacantes');
 // POST /api/rh/empleados/:id/foto
 router.post(
     "/rh/empleados/:id/foto",
@@ -1639,6 +1646,43 @@ router.get('/rh/exportar-bd/logs', authMiddleware, async (req, res) => {
         res.json({ success: true, data: logs });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
+    }
+});
+//rutas mandos (Gerente / Supervisor)
+router.post('/mandos/vacantes', authMiddleware, soloMandos, async(req, res)=>{
+    try{
+        res.json(await solicitarVacante(req.user.usuarioId, req.body));
+    } catch(error){
+        res.status(500).json({error: error.message});
+    };
+});
+router.get('/mandos/vacantes', authMiddleware, soloMandos, async(req, res)=>{
+    try{
+        res.json(await getVacantesSolicitante(req.user.usuarioId));
+    } catch(error){
+        res.status(500).json({error: error.message});
+    };
+});
+//Rutas vacantes RH
+router.get('/rh/vacantes', authMiddleware, soloRH, async(req, res)=>{
+    try{
+        res.json(await  getAllVacantes());
+    } catch(error){
+        res.status(500).json({error: error.message});
+    };
+});
+router.put('/rh/vacantes/:id/gestionar', authMiddleware, soloRH, async(req, res)=>{
+    try{
+        res.json( await gestionarVacanteRH(req.params.id, req.body));
+    } catch(error){
+        res.status(500).json({error: error.message});
+    };
+});
+router.delete('/rh/vacantes/:id', authMiddleware, soloRH, async (req, res) => {
+    try {
+        res.json(await deleteVacante(req.params.id));
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 module.exports = router;

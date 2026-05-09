@@ -264,6 +264,40 @@ async function generarExcelBD() {
         ]);
         styleRow(row);
     }
+    //Hoja 8 vacantes
+    const wsVacantes = wb.addWorksheet('Solicitudes de Vacantes');
+    wsVacantes.columns = [
+        { width: 5 }, { width: 25 }, { width: 20 }, { width: 25 }, { width: 10 }, 
+        { width: 30 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 30 }
+    ];
+    const hdrVacantes = wsVacantes.addRow([
+        'ID', 'Solicitante', 'Departamento', 'Puesto Solicitado', 'Plazas', 
+        'Motivo', 'Prioridad', 'Estado', 'Fecha Requerida', 'Notas RH'
+    ]);
+    styleHeader(hdrVacantes, fillGray);
+    
+    const listaVacantes = await query(`
+        SELECT v.*, u.nombre, u.apPaterno 
+        FROM vacantes v
+        LEFT JOIN usuarios u ON v.solicitanteId = u.usuarioId
+        ORDER BY v.createdAt DESC
+    `);
+    
+    for (const v of listaVacantes) {
+        const row = wsVacantes.addRow([
+            v.vacanteId, 
+            `${v.nombre || ''} ${v.apPaterno || ''}`, 
+            v.departamento, 
+            v.puesto, 
+            v.num_plazas, 
+            v.motivo, 
+            v.prioridad, 
+            v.estado, 
+            fmtDate(v.fecha_requerida),
+            v.notas_rh
+        ]);
+        styleRow(row);
+    }
     return await wb.xlsx.writeBuffer();
 }
 module.exports = { generarExcelBD, registrarLog, getExportLogs };
