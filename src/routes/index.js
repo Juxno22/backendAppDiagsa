@@ -2,7 +2,9 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const connection = require("../config/connection");
-const { authMiddleware, soloSupervisor } = require("../middlewares/auth");
+const { authMiddleware, soloSupervisor, soloRH, soloMandos, puedeVerDepartamento, ROL_RH, ROL_SUPERVISOR,
+    ROL_GERENTE, ROL_AUXILIAR,
+ } = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
@@ -11,11 +13,6 @@ const {
     crearPermiso, getPermisosByEmpleado, getTodosPermisos,
     getPermisoById, responderPermiso, deletePermiso,
 } = require('../models/permisos');
-const {
-    authMiddleware, soloRH, soloSupervisor, soloMandos,
-    puedeVerDepartamento,
-    ROL_RH, ROL_SUPERVISOR, ROL_GERENTE, ROL_AUXILIAR,
-} = require('../middlewares/auth');
 const {
     generarNotificaciones,
     getNotificacionesRH,
