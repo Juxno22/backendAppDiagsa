@@ -12,6 +12,11 @@ const {
     getPermisoById, responderPermiso, deletePermiso,
 } = require('../models/permisos');
 const {
+    authMiddleware, soloRH, soloSupervisor, soloMandos,
+    puedeVerDepartamento,
+    ROL_RH, ROL_SUPERVISOR, ROL_GERENTE, ROL_AUXILIAR,
+} = require('../middlewares/auth');
+const {
     generarNotificaciones,
     getNotificacionesRH,
     marcarComoLeida,
@@ -465,51 +470,36 @@ router.post(
  * GET /api/supervisor/empleados
  * El supervisor obtiene la lista de todos los empleados.
  */
-router.get("/supervisor/empleados", authMiddleware, async (req, res) => {
+router.get('/supervisor/empleados', authMiddleware, async (req, res) => {
     try {
-        const empleados = await getAllEmpleados();
-        res.json({
-            success: true,
-            data: empleados,
-        });
+        const { rolId, departamento } = req.user;
+        const empleados = await getAllEmpleados(rolId, departamento);
+        res.json({ success: true, data: empleados });
     } catch (error) {
-        console.error("Error al obtener empleados", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Error interno",
-        });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 /**
  * GET /api/supervisor/empleados/:id
  * El supervisor consulta el perfil completo de un empleado específico.
  */
-router.get("/supervisor/empleados/:id", authMiddleware, async (req, res) => {
+router.get('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
-        if (isNaN(id)) {
-            return res.status(400).json({
-                success: false,
-                message: "ID incorrecto",
-            });
-        }
+        if (isNaN(id)) return res.status(400).json({ success: false, message: 'ID incorrecto' });
+ 
         const empleado = await getEmpleadoById(id);
-        if (!empleado) {
-            return res.status(404).json({
-                success: false,
-                message: "Empleado no encontrado",
-            });
+        if (!empleado) return res.status(404).json({ success: false, message: 'Empleado no encontrado' });
+ 
+        // Gerente y Auxiliar solo ven su departamento
+        if ([ROL_GERENTE, ROL_AUXILIAR].includes(req.user.rolId)) {
+            if (empleado.departamento !== req.user.departamento) {
+                return res.status(403).json({ success: false, message: 'No tienes acceso a este empleado' });
+            }
         }
-        res.json({
-            success: true,
-            data: empleado,
-        });
+        res.json({ success: true, data: empleado });
     } catch (error) {
-        console.error("Error al obtener al empleado", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Error interno",
-        });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 /**
@@ -518,30 +508,22 @@ router.get("/supervisor/empleados/:id", authMiddleware, async (req, res) => {
  * Body: cualquier subconjunto de { nombre, apPaterno, apMaterno, puestoId,
  *        tipoId, sueldoId, rolId, fechaContratacion, departamento, jefe_inmediato }
  */
-router.patch("/supervisor/empleados/:id", authMiddleware, async (req, res) => {
+router.patch('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
-        if (isNaN(id)) {
-            return res.status(400).json({
-                success: false,
-                message: "ID incorrecto",
-            });
+        const body   = { ...req.body };
+ 
+        // Auto-calcular fondo ahorro y sueldo neto
+        if (body.sueldo_bruto) {
+            body.fondo_ahorro = Math.round(Number(body.sueldo_bruto) * 0.05 * 100) / 100;
+            body.sueldo_neto  = Math.round(Number(body.sueldo_bruto) * 0.95 * 100) / 100;
+            body.sueldo       = body.sueldo_bruto; // compatibilidad
         }
-        if (Object.keys(req.body).length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "No se enviaron datos para actualizar",
-            });
-        }
-        const result = await updateEmpleado(id, req.body);
-        const statusCode = result.success ? 200 : 400;
-        res.status(statusCode).json(result);
+ 
+        const result = await updateEmpleado(id, body);
+        res.status(result.success ? 200 : 400).json(result);
     } catch (error) {
-        console.error("Error al actualizar empleado:", error);
-        res.status(500).json({
-            success: false,
-            message: error.message || "Error interno",
-        });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 /**
@@ -910,53 +892,34 @@ router.post("/generar-usuario", async (req, res) => {
  * Elimina un empleado. Requiere verificar la contraseña del RH.
  * Body: { contrasenia }
  */
-router.delete("/rh/empleados/:id", authMiddleware, async (req, res) => {
+router.delete('/rh/empleados/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
-        const { contrasenia } = req.body;
+        const { contrasenia, motivo_baja, motivo_detalle, finiquito, observaciones } = req.body;
         const rhId = req.user.usuarioId;
-        const rolSolicitante = req.user.rolId;
-
-        if (!contrasenia) {
-            return res.status(400).json({
-                success: false,
-                message: "Se requiere tu contraseña para confirmar",
-            });
-        }
-
-        // Verificar contraseña del RH
+ 
+        if (!contrasenia)
+            return res.status(400).json({ success: false, message: 'Se requiere tu contraseña' });
+ 
         const rows = await new Promise((resolve, reject) => {
-            connection.query(
-                "SELECT contrasenia FROM usuarios WHERE usuarioId = ?",
-                [rhId],
-                (err, results) => (err ? reject(err) : resolve(results)),
-            );
+            connection.query('SELECT contrasenia FROM usuarios WHERE usuarioId = ?',
+                [rhId], (err, r) => err ? reject(err) : resolve(r));
         });
-
-        if (rows.length === 0) {
-            return res
-                .status(401)
-                .json({ success: false, message: "Usuario no encontrado" });
-        }
-
-        const passwordMatch = await bcrypt.compare(
-            contrasenia,
-            rows[0].contrasenia,
-        );
-        if (!passwordMatch) {
-            return res
-                .status(401)
-                .json({ success: false, message: "Contraseña incorrecta" });
-        }
-
-        const result = await deleteEmpleado(Number(id), rolSolicitante);
-        const statusCode = result.success ? 200 : 400;
-        res.status(statusCode).json(result);
+        if (!rows.length) return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
+ 
+        const match = await bcrypt.compare(contrasenia, rows[0].contrasenia);
+        if (!match) return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
+ 
+        const result = await deleteEmpleado(Number(id), req.user.rolId, {
+            motivo_baja:    motivo_baja    || 'otro',
+            motivo_detalle: motivo_detalle || null,
+            finiquito:      finiquito      || null,
+            observaciones:  observaciones  || null,
+            registrado_por: rhId,
+        });
+        res.status(result.success ? 200 : 400).json(result);
     } catch (error) {
-        console.error("Error al eliminar empleado:", error);
-        res
-            .status(500)
-            .json({ success: false, message: error.message || "Error interno" });
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 /**
@@ -1487,6 +1450,64 @@ router.post('/rh/empleados/:id/hijos', authMiddleware, async (req, res) => {
         const { nombre, fecha_nacimiento } = req.body;
         const result = await addHijo(Number(req.params.id), nombre, fecha_nacimiento);
         res.status(201).json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+//Descuento
+router.get('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => {
+    try {
+        const rows = await new Promise((resolve, reject) => {
+            connection.query(
+                'SELECT * FROM descuentos WHERE usuarioId = ? ORDER BY descuentoId',
+                [req.params.id], (err, r) => err ? reject(err) : resolve(r)
+            );
+        });
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+router.post('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => {
+    try {
+        const { concepto, monto, tipo, periodicidad } = req.body;
+        if (!concepto || !monto) return res.status(400).json({ success: false, message: 'Faltan campos' });
+        const result = await new Promise((resolve, reject) => {
+            connection.query(
+                'INSERT INTO descuentos (usuarioId, concepto, monto, tipo, periodicidad) VALUES (?, ?, ?, ?, ?)',
+                [req.params.id, concepto, monto, tipo || 'descuento', periodicidad || 'quincena'],
+                (err, r) => err ? reject(err) : resolve(r)
+            );
+        });
+        res.status(201).json({ success: true, descuentoId: result.insertId });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+ 
+router.delete('/rh/descuentos/:id', authMiddleware, async (req, res) => {
+    try {
+        await new Promise((resolve, reject) => {
+            connection.query('DELETE FROM descuentos WHERE descuentoId = ?',
+                [req.params.id], (err) => err ? reject(err) : resolve(null));
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+//Historial de bajas
+router.get('/rh/bajas', authMiddleware, async (req, res) => {
+    try {
+        const rows = await new Promise((resolve, reject) => {
+            connection.query(`
+                SELECT b.*, u.nombre AS rh_nombre, u.apPaterno AS rh_apPaterno
+                FROM bajas b
+                LEFT JOIN usuarios u ON b.registrado_por = u.usuarioId
+                ORDER BY b.fecha_baja DESC
+            `, (err, r) => err ? reject(err) : resolve(r));
+        });
+        res.json({ success: true, data: rows });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

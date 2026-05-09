@@ -12,27 +12,32 @@ const query = (sql, values = []) => {
         });
     });
 };
-/**
- * obtener la información completa de un empleado por su ID.
- * Se hace JOIN con las tablas relacionadas.
- * @param {number} usuarioId - ID del empleado autenticado.
- * @returns {Object|null} Datos del empleado o null si no existe.
- */
+// Agrega todos los campos nuevos al SELECT
 async function getEmpleadoById(usuarioId) {
     const sql = `
         SELECT
-            u.usuarioId, u.nombre, u.apPaterno, u.apMaterno, u.usuario,
-            u.fechaContratacion, u.departamento, u.jefe_inmediato,
+            u.usuarioId, u.nombre, u.apPaterno, u.apMaterno,
+            u.usuario, u.fechaContratacion, u.departamento, u.jefe_inmediato,
             p.nombre_puesto, t.nombre_tipo, s.cantidad_sueldo,
             r.nombre_rol, u.puestoId, u.tipoId, u.sueldoId, u.rolId,
-            u.foto, u.sueldo,
-            -- Nuevos campos personales
+            u.foto, u.sueldo, u.sueldo_bruto, u.fondo_ahorro, u.sueldo_neto,
+            -- Personales
             u.genero, u.estado_civil, u.numero_seguro_social,
             u.RFC, u.fecha_nacimiento, u.curp, u.celular,
             u.es_padre_madre, u.fecha_contrato_indeterminado_3m,
             -- Uniformes
             u.talla_playera, u.talla_pantalon, u.talla_calzado,
             u.talla_faja, u.talla_guantes,
+            -- Fiscal adicional
+            u.numero_cuenta, u.clabe_interbancaria, u.codigo_postal,
+            u.infonavit, u.fonacot, u.pdf_rfc, u.pdf_psicometrico,
+            -- Contacto emergencia
+            u.emergencia_nombre, u.emergencia_telefono, u.emergencia_parentesco,
+            -- Domicilio
+            u.domicilio_calle, u.domicilio_colonia, u.domicilio_localidad,
+            u.domicilio_cp, u.domicilio_num_ext, u.domicilio_num_int,
+            u.domicilio_municipio, u.domicilio_estado,
+            u.domicilio_lat, u.domicilio_lng,
             -- Días usados
             COALESCE((
                 SELECT SUM(DATEDIFF(v.fecha_fin_vacaciones, v.fecha_inicio_vacaciones) + 1)
@@ -55,20 +60,20 @@ async function getEmpleadoById(usuarioId) {
     const dias = calcularDiasVacacionesLFT(emp.fechaContratacion);
     const diasRestantes = Math.max(0, dias - emp.dias_usados);
  
-    // Cargar vehículo e hijos
-    const vehiculo = await query(
-        'SELECT * FROM vehiculos WHERE usuarioId = ? LIMIT 1', [usuarioId]
-    );
-    const hijos = await query(
-        'SELECT * FROM hijos WHERE usuarioId = ? ORDER BY hijoId', [usuarioId]
-    );
+    // Cargar vehículo, hijos y descuentos
+    const [vehiculo, hijos, descuentos] = await Promise.all([
+        query('SELECT * FROM vehiculos WHERE usuarioId = ? LIMIT 1', [emp.usuarioId]),
+        query('SELECT * FROM hijos WHERE usuarioId = ? ORDER BY hijoId', [emp.usuarioId]),
+        query('SELECT * FROM descuentos WHERE usuarioId = ? AND activo = 1 ORDER BY descuentoId', [emp.usuarioId]),
+    ]);
  
     return {
         ...emp,
         dias_vacaciones_lft: dias,
-        dias_restantes: diasRestantes,
-        vehiculo: vehiculo[0] || null,
-        hijos: hijos || [],
+        dias_restantes:      diasRestantes,
+        vehiculo:    vehiculo[0] || null,
+        hijos:       hijos       || [],
+        descuentos:  descuentos  || [],
     };
 }
 /**
@@ -148,35 +153,30 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
     };
 }
 
-//operaciones del supervisor
-/**
- * Obtener la lista completa de todos los empleados.
- * @returns {Array} Lista de empleados con sus datos principales.
- */
-async function getAllEmpleados() {
-    const sql = `
+// Filtra por departamento si es Gerente o Auxiliar
+async function getAllEmpleados(rolId, departamento) {
+    let sql = `
         SELECT
-            u.usuarioId,
-            u.nombre,
-            u.apPaterno,
-            u.apMaterno,
-            u.usuario,
-            u.foto,
-            u.fechaContratacion,
-            u.departamento,
-            u.jefe_inmediato,
-            p.nombre_puesto,
-            t.nombre_tipo,
-            s.cantidad_sueldo,
-            r.nombre_rol
+            u.usuarioId, u.nombre, u.apPaterno, u.apMaterno,
+            u.usuario, u.departamento, u.jefe_inmediato,
+            p.nombre_puesto, t.nombre_tipo, r.nombre_rol,
+            u.puestoId, u.tipoId, u.rolId, u.foto, u.sueldo,
+            u.fechaContratacion
         FROM usuarios u
-        LEFT JOIN puesto   p ON u.puestoId  = p.puestoId
-        LEFT JOIN tipos    t ON u.tipoId    = t.tipoId
-        LEFT JOIN sueldos  s ON u.sueldoId  = s.sueldoId
-        LEFT JOIN roles    r ON u.rolId     = r.rolId
-        ORDER BY u.apPaterno, u.apMaterno, u.nombre
+        LEFT JOIN puesto p ON u.puestoId = p.puestoId
+        LEFT JOIN tipos  t ON u.tipoId   = t.tipoId
+        LEFT JOIN roles  r ON u.rolId    = r.rolId
     `;
-    return await query(sql);
+    const params = [];
+ 
+    // Gerente y Auxiliar solo ven su departamento
+    if ([5, 6].includes(rolId) && departamento) {
+        sql += ' WHERE u.departamento = ?';
+        params.push(departamento);
+    }
+ 
+    sql += ' ORDER BY u.apPaterno, u.nombre';
+    return await query(sql, params);
 }
 /**
  * Actualizar los datos de un empleado existente.
@@ -190,14 +190,22 @@ async function getAllEmpleados() {
  */
 async function updateEmpleado(usuarioId, datosNuevos) {
     const camposPermitidos = [
-    "nombre", "apPaterno", "apMaterno",
-    "puestoId", "tipoId", "sueldoId", "sueldo", "rolId",
-    "fechaContratacion", "departamento", "jefe_inmediato",
-    "genero", "estado_civil", "numero_seguro_social",
-    "RFC", "fecha_nacimiento", "curp", "celular",
-    "es_padre_madre", "fecha_contrato_indeterminado_3m",
-    "talla_playera", "talla_pantalon", "talla_calzado",
-    "talla_faja", "talla_guantes",
+        "nombre", "apPaterno", "apMaterno",
+        "puestoId", "tipoId", "sueldoId", "sueldo", "rolId",
+        "fechaContratacion", "departamento", "jefe_inmediato",
+        "genero", "estado_civil", "numero_seguro_social",
+        "RFC", "fecha_nacimiento", "curp", "celular",
+        "es_padre_madre", "fecha_contrato_indeterminado_3m",
+        "talla_playera", "talla_pantalon", "talla_calzado",
+        "talla_faja", "talla_guantes",
+        "sueldo_bruto", "fondo_ahorro", "sueldo_neto",
+        "numero_cuenta", "clabe_interbancaria", "codigo_postal",
+        "infonavit", "fonacot",
+        "emergencia_nombre", "emergencia_telefono", "emergencia_parentesco",
+        "domicilio_calle", "domicilio_colonia", "domicilio_localidad",
+        "domicilio_cp", "domicilio_num_ext", "domicilio_num_int",
+        "domicilio_municipio", "domicilio_estado",
+        "domicilio_lat", "domicilio_lng",
     ];
     //filtrar solo los campos permitidos
     const camposAActualizar = Object.keys(datosNuevos).filter((k) =>
@@ -569,55 +577,53 @@ async function getDiasVacacionesLFT(usuarioId) {
         bloqueadoHasta,
     };
 }
-/**
- * Elimina un empleado de la BD.
- * Solo se puede eliminar si no tiene evaluaciones registradas.
- * @param {number} usuarioId - ID del empleado a eliminar
- * @returns {Object} { success, message }
- */
-async function deleteEmpleado(usuarioId, rolSolicitante) {
-    // Verificar que el empleado exista
-    const empleado = await query(
-        "SELECT usuarioId, rolId FROM usuarios WHERE usuarioId = ?",
-        [usuarioId],
-    );
-    if (empleado.length === 0) {
-        return { success: false, message: "Empleado no encontrado" };
+// ── deleteEmpleado — registra la baja ─────────────────────────
+async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
+    if (![3].includes(rolSolicitante)) {
+        return { success: false, message: 'Solo RH puede eliminar empleados' };
     }
-    const rolEmpleado = empleado[0].rolId;
-    // ── Reglas según quien elimina ────────────────────────────
-    if (rolSolicitante === 2) {
-        // Supervisor solo puede eliminar empleados (rolId = 1)
-        if (rolEmpleado !== 1) {
-            return {
-                success: false,
-                message: "El supervisor solo puede eliminar empleados",
-            };
-        }
-    } else if (rolSolicitante === 3) {
-        // RH no puede eliminarse a sí mismo ni a otros RH
-        if (rolEmpleado === 3) {
-            return { success: false, message: "No se puede eliminar un usuario RH" };
-        }
-    } else {
-        return {
-            success: false,
-            message: "No tienes permisos para eliminar usuarios",
-        };
+ 
+    const rows = await query(`
+        SELECT u.*, p.nombre_puesto
+        FROM usuarios u
+        LEFT JOIN puesto p ON u.puestoId = p.puestoId
+        WHERE u.usuarioId = ?
+    `, [usuarioId]);
+ 
+    if (rows.length === 0) return { success: false, message: 'Empleado no encontrado' };
+    const emp = rows[0];
+ 
+    // Calcular tiempo laboral
+    let tiempoLaboral = '';
+    if (emp.fechaContratacion) {
+        const cont = new Date(emp.fechaContratacion);
+        const hoy  = new Date();
+        const años  = hoy.getFullYear() - cont.getFullYear();
+        const meses = hoy.getMonth() - cont.getMonth();
+        tiempoLaboral = `${años} año${años !== 1 ? 's' : ''} ${Math.abs(meses)} mes${Math.abs(meses) !== 1 ? 'es' : ''}`;
     }
-    // Verificar que no tenga evaluaciones
-    const evaluaciones = await query(
-        "SELECT evaluacionesId FROM evaluaciones WHERE usuarioId = ? LIMIT 1",
-        [usuarioId],
-    );
-    if (evaluaciones.length > 0) {
-        return {
-            success: false,
-            message: "No se puede eliminar un empleado con evaluaciones registradas",
-        };
-    }
-    await query("DELETE FROM usuarios WHERE usuarioId = ?", [usuarioId]);
-    return { success: true, message: "Empleado eliminado correctamente" };
+ 
+    // Registrar en historial de bajas
+    await query(`
+        INSERT INTO bajas (
+            usuarioId, nombre, apPaterno, apMaterno, usuario,
+            departamento, puesto, fecha_contratacion, sueldo,
+            fecha_baja, motivo_baja, motivo_detalle,
+            tiempo_laboral, finiquito, observaciones, registrado_por
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)
+    `, [
+        emp.usuarioId, emp.nombre, emp.apPaterno, emp.apMaterno, emp.usuario,
+        emp.departamento, emp.nombre_puesto, emp.fechaContratacion, emp.sueldo,
+        datosBaja.motivo_baja     || 'otro',
+        datosBaja.motivo_detalle  || null,
+        tiempoLaboral,
+        datosBaja.finiquito       || null,
+        datosBaja.observaciones   || null,
+        datosBaja.registrado_por  || null,
+    ]);
+ 
+    await query('DELETE FROM usuarios WHERE usuarioId = ?', [usuarioId]);
+    return { success: true, message: 'Empleado eliminado y baja registrada' };
 };
 /**
  * Obtiene TODAS las solicitudes de vacaciones con historial completo.

@@ -186,7 +186,6 @@ async function loginUser(usuario, contrasenia) {
       });
     });
   };
-
   try {
     // 1. Buscar el usuario en la BD
     const rows = await query("SELECT * FROM usuarios WHERE usuario = ?", [
@@ -211,6 +210,7 @@ async function loginUser(usuario, contrasenia) {
         usuarioId: user.usuarioId,
         usuario: user.usuario,
         rolId: user.rolId,
+        departamento: user.departamento || null,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
@@ -225,6 +225,7 @@ async function loginUser(usuario, contrasenia) {
         nombre: user.nombre,
         usuario: user.usuario,
         rolId: user.rolId,
+        departamento: user.departamento || null,
       },
     };
   } catch (error) {
