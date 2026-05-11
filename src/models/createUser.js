@@ -48,37 +48,37 @@ async function createUser(userData) {
             userData.curp = userData.curp.toUpperCase().trim();
         }
         //Validacion Clabe Interbancaria
-        if (datosNuevos.clabe_interbancaria) {
-            const clabe = datosNuevos.clabe_interbancaria.replace(/\s/g, '');
+        if (userData.clabe_interbancaria) {
+            const clabe = userData.clabe_interbancaria.replace(/\s/g, '');
             if (!/^\d{18}$/.test(clabe)) {
                 return {
                     success: false,
                     message: 'CLABE inválida'
                 };
             }
-            datosNuevos.clabe_interbancaria = clabe;
+            userData.clabe_interbancaria = clabe;
         }
         //Validacion NSS
-        if (datosNuevos.numero_seguro_social) {
-            const nss = datosNuevos.numero_seguro_social.replace(/\s/g, '');
+        if (userData.numero_seguro_social) {
+            const nss = userData.numero_seguro_social.replace(/\s/g, '');
             if (!/^\d{11}$/.test(nss)) {
                 return {
                     success: false,
                     message: 'NSS inválido'
                 };
             }
-            datosNuevos.numero_seguro_social = nss;
+            userData.numero_seguro_social = nss;
         }
         //Validacion numero de telefono
-        if (datosNuevos.celular) {
-            const celular = datosNuevos.celular.replace(/\D/g, '');
+        if (userData.celular) {
+            const celular = userData.celular.replace(/\D/g, '');
             if (celular.length !== 10) {
                 return {
                     success: false,
                     message: 'Celular inválido'
                 };
             }
-            datosNuevos.celular = celular;
+            userData.celular = celular;
         }
         // Calcular sueldo desglosado
         const sueldoBruto = userData.sueldo_bruto ? Number(userData.sueldo_bruto) : (userData.sueldo ? Number(userData.sueldo) : null);
