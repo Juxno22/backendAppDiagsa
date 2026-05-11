@@ -40,6 +40,20 @@ async function createUser(userData) {
                 userData[campo] = numero;
             }
         }
+        if (userData.sueldo !== undefined && userData.sueldo !== null && userData.sueldo !== '') {
+            const sueldoNum = Number(userData.sueldo);
+            if (isNaN(sueldoNum)) {
+                return { success: false, message: 'Sueldo inválido' };
+            }
+            userData.sueldo = sueldoNum;
+        }
+        if (userData.sueldo_bruto !== undefined && userData.sueldo_bruto !== null && userData.sueldo_bruto !== '') {
+            const brutoNum = Number(userData.sueldo_bruto);
+            if (isNaN(brutoNum)) {
+                return { success: false, message: 'Sueldo bruto inválido' };
+            }
+            userData.sueldo_bruto = brutoNum;
+        }
         //RFC Y CURP tranformado a mayusculas
         if (userData?.RFC) {
             userData.RFC = userData.RFC.toUpperCase().trim();
