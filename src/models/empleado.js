@@ -30,7 +30,7 @@ async function getEmpleadoById(usuarioId) {
             u.talla_faja, u.talla_guantes,
             -- Fiscal adicional
             u.numero_cuenta, u.clabe_interbancaria, u.codigo_postal,
-            u.infonavit, u.fonacot, u.pdf_rfc, u.pdf_psicometrico, u.razon_social
+            u.infonavit, u.fonacot, u.pdf_rfc, u.pdf_psicometrico, u.razon_social,
             -- Contacto emergencia
             u.emergencia_nombre, u.emergencia_telefono, u.emergencia_parentesco,
             -- Domicilio
