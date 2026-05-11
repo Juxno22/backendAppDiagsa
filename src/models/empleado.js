@@ -37,7 +37,7 @@ async function getEmpleadoById(usuarioId) {
             u.domicilio_calle, u.domicilio_colonia, u.domicilio_localidad,
             u.domicilio_cp, u.domicilio_num_ext, u.domicilio_num_int,
             u.domicilio_municipio, u.domicilio_estado,
-            u.domicilio_lat, u.domicilio_lng,
+            u.domicilio_lat, u.domicilio_lng, u.nombre_banco,  u.codigo_postal_fiscal
             -- Días usados
             COALESCE((
                 SELECT SUM(DATEDIFF(v.fecha_fin_vacaciones, v.fecha_inicio_vacaciones) + 1)
@@ -263,7 +263,7 @@ async function updateEmpleado(usuarioId, datosNuevos) {
         "domicilio_calle", "domicilio_colonia", "domicilio_localidad",
         "domicilio_cp", "domicilio_num_ext", "domicilio_num_int",
         "domicilio_municipio", "domicilio_estado",
-        "domicilio_lat", "domicilio_lng", "razon_social",
+        "domicilio_lat", "domicilio_lng", "razon_social", "nombre_banco", "codigo_postal_fiscal"
     ];
     //filtrar solo los campos permitidos
     const camposAActualizar = Object.keys(datosNuevos).filter((k) =>
