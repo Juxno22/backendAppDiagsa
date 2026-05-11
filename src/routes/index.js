@@ -518,7 +518,7 @@ router.patch('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
         const body   = { ...req.body };
  
         // Auto-calcular fondo ahorro y sueldo neto
-        if (body.sueldo_bruto) {
+        if (body.sueldo) {
             body.fondo_ahorro = Math.round(Number(body.sueldo_bruto) * 0.05 * 100) / 100;
             body.sueldo_neto  = Math.round(Number(body.sueldo_bruto) * 0.95 * 100) / 100;
             body.sueldo       = body.sueldo_bruto; // compatibilidad
