@@ -18,8 +18,8 @@ async function getEmpleadoById(usuarioId) {
         SELECT
             u.usuarioId, u.nombre, u.apPaterno, u.apMaterno,
             u.usuario, u.fechaContratacion, u.departamento, u.jefe_inmediato,
-            p.nombre_puesto, t.nombre_tipo, s.cantidad_sueldo,
-            r.nombre_rol, u.puestoId, u.tipoId, u.sueldoId, u.rolId,
+            p.nombre_puesto, t.nombre_tipo,
+            r.nombre_rol, u.puestoId, u.tipoId, u.rolId,
             u.foto, u.sueldo, u.sueldo_bruto, u.fondo_ahorro, u.sueldo_neto,
             -- Personales
             u.genero, u.estado_civil, u.numero_seguro_social,
@@ -49,7 +49,6 @@ async function getEmpleadoById(usuarioId) {
         FROM usuarios u
         LEFT JOIN puesto  p ON u.puestoId = p.puestoId
         LEFT JOIN tipos   t ON u.tipoId   = t.tipoId
-        LEFT JOIN sueldos s ON u.sueldoId = s.sueldoId
         LEFT JOIN roles   r ON u.rolId    = r.rolId
         WHERE u.usuarioId = ?
     `;
@@ -191,7 +190,7 @@ async function getAllEmpleados(rolId, departamento) {
 async function updateEmpleado(usuarioId, datosNuevos) {
     const camposPermitidos = [
         "nombre", "apPaterno", "apMaterno",
-        "puestoId", "tipoId", "sueldoId", "sueldo", "rolId",
+        "puestoId", "tipoId", "sueldo", "rolId",
         "fechaContratacion", "departamento", "jefe_inmediato",
         "genero", "estado_civil", "numero_seguro_social",
         "RFC", "fecha_nacimiento", "curp", "celular",

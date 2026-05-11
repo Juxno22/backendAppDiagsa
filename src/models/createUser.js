@@ -30,7 +30,7 @@ async function createUser(userData) {
         const result = await query(`
             INSERT INTO usuarios (
                 nombre, apPaterno, apMaterno, usuario, contrasenia,
-                puestoId, tipoId, sueldoId, rolId,
+                puestoId, tipoId, rolId,
                 fechaContratacion, departamento, jefe_inmediato,
                 sueldo, sueldo_bruto, fondo_ahorro, sueldo_neto,
                 genero, estado_civil, numero_seguro_social, RFC,
@@ -43,7 +43,7 @@ async function createUser(userData) {
                 domicilio_cp, domicilio_num_ext, domicilio_num_int,
                 domicilio_municipio, domicilio_estado, razon_social
             ) VALUES (
-                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?,
@@ -60,7 +60,7 @@ async function createUser(userData) {
         `, [
             userData.nombre, userData.apPaterno, userData.apMaterno,
             userData.usuario, hashedPassword,
-            userData.puestoId, userData.tipoId || null, userData.sueldoId || null, userData.rolId,
+            userData.puestoId, userData.tipoId || null, userData.rolId,
             userData.fechaContratacion, userData.departamento, userData.jefe_inmediato || null,
             sueldoBruto, sueldoBruto, fondoAhorro, sueldoNeto,
             userData.genero || null, userData.estado_civil || null,
