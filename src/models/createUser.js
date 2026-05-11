@@ -41,7 +41,7 @@ async function createUser(userData) {
                 emergencia_nombre, emergencia_telefono, emergencia_parentesco,
                 domicilio_calle, domicilio_colonia, domicilio_localidad,
                 domicilio_cp, domicilio_num_ext, domicilio_num_int,
-                domicilio_municipio, domicilio_estado
+                domicilio_municipio, domicilio_estado, razon_social
             ) VALUES (
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?,
@@ -55,7 +55,7 @@ async function createUser(userData) {
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
-                ?, ?
+                ?, ?,?
             )
         `, [
             userData.nombre, userData.apPaterno, userData.apMaterno,
@@ -79,6 +79,7 @@ async function createUser(userData) {
             userData.domicilio_cp || null, userData.domicilio_num_ext || null,
             userData.domicilio_num_int || null,
             userData.domicilio_municipio || null, userData.domicilio_estado || null,
+            userData.razon_social || null,
         ]);
 
         return {
