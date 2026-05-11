@@ -138,12 +138,12 @@ async function generarExcelBD() {
         { width: 8 }, { width: 20 }, { width: 20 }, { width: 24 }, { width: 18 },
     ];
     const hdrHijos = wsHijos.addRow([
-        'ID Empleado', 'Nombre Empleado', 'Ap. Paterno', 'Nombre Hijo', 'Fecha Nacimiento',
+        'ID Empleado', 'Nombre Empleado', 'Ap. Paterno', 'Nombre Hijo', 'Fecha Nacimiento',  'Genero',
     ]);
     styleHeader(hdrHijos, fillRed);
     const hijos = await query(`
     SELECT h.hijoId, h.nombre AS nombre_hijo, h.fecha_nacimiento,
-           u.usuarioId, u.nombre AS nombre_empleado, u.apPaterno
+           u.usuarioId, u.nombre AS nombre_empleado, u.apPaterno, h.genero
     FROM hijos h
     LEFT JOIN usuarios u ON h.usuarioId = u.usuarioId
     ORDER BY u.apPaterno

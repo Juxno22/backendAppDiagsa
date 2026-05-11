@@ -742,10 +742,10 @@ async function getHijosByEmpleado(usuarioId) {
     );
 }
 
-async function addHijo(usuarioId, nombre, fecha_nacimiento) {
+async function addHijo(usuarioId, nombre, fecha_nacimiento, genero) {
     const result = await query(
-        'INSERT INTO hijos (usuarioId, nombre, fecha_nacimiento) VALUES (?, ?, ?)',
-        [usuarioId, nombre, fecha_nacimiento || null]
+        'INSERT INTO hijos (usuarioId, nombre, fecha_nacimiento, genero) VALUES (?, ?, ?,?)',
+        [usuarioId, nombre, fecha_nacimiento || null, genero]
     );
     return { success: true, hijoId: result.insertId };
 }
