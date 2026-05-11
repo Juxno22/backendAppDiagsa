@@ -54,25 +54,25 @@ async function getEmpleadoById(usuarioId) {
     `;
     const rows = await query(sql, [usuarioId]);
     if (rows.length === 0) return null;
- 
+
     const emp = rows[0];
     const dias = calcularDiasVacacionesLFT(emp.fechaContratacion);
     const diasRestantes = Math.max(0, dias - emp.dias_usados);
- 
+
     // Cargar vehículo, hijos y descuentos
     const [vehiculo, hijos, descuentos] = await Promise.all([
         query('SELECT * FROM vehiculos WHERE usuarioId = ? LIMIT 1', [emp.usuarioId]),
         query('SELECT * FROM hijos WHERE usuarioId = ? ORDER BY hijoId', [emp.usuarioId]),
         query('SELECT * FROM descuentos WHERE usuarioId = ? AND activo = 1 ORDER BY descuentoId', [emp.usuarioId]),
     ]);
- 
+
     return {
         ...emp,
         dias_vacaciones_lft: dias,
-        dias_restantes:      diasRestantes,
-        vehiculo:    vehiculo[0] || null,
-        hijos:       hijos       || [],
-        descuentos:  descuentos  || [],
+        dias_restantes: diasRestantes,
+        vehiculo: vehiculo[0] || null,
+        hijos: hijos || [],
+        descuentos: descuentos || [],
     };
 }
 /**
@@ -167,13 +167,13 @@ async function getAllEmpleados(rolId, departamento) {
         LEFT JOIN roles  r ON u.rolId    = r.rolId
     `;
     const params = [];
- 
+
     // Gerente y Auxiliar solo ven su departamento
     if ([5, 6].includes(rolId) && departamento) {
         sql += ' WHERE u.departamento = ?';
         params.push(departamento);
     }
- 
+
     sql += ' ORDER BY u.apPaterno, u.nombre';
     return await query(sql, params);
 }
@@ -188,6 +188,65 @@ async function getAllEmpleados(rolId, departamento) {
  * @returns {Object} { success, message }
  */
 async function updateEmpleado(usuarioId, datosNuevos) {
+    //valiiidacion de campos numericos
+    const camposNumericos = [
+        'sueldo',
+        'sueldo_bruto',
+        'sueldo_neto',
+        'fondo_ahorro'
+    ];
+    for (const campo of camposNumericos) {
+        if (datosNuevos[campo] !== undefined && datosNuevos[campo] !== null && datosNuevos[campo] !== '') {
+            const numero = Number(datosNuevos[campo]);
+            if (isNaN(numero)) {
+                return {
+                    success: false,
+                    message: `${campo} inválido`
+                };
+            }
+            datosNuevos[campo] = numero;
+        }
+    }
+    //RFC y CURP con mayusculas
+    if (datosNuevos?.RFC) {
+        datosNuevos.RFC = datosNuevos.RFC.toUpperCase().trim();
+    }
+    if (datosNuevos?.curp) {
+        datosNuevos.curp = datosNuevos.curp.toUpperCase().trim();
+    }
+    //Valiidacion de clabe interbancaria
+    if (datosNuevos.clabe_interbancaria) {
+        const clabe = datosNuevos.clabe_interbancaria.replace(/\s/g, '');
+        if (!/^\d{18}$/.test(clabe)) {
+            return {
+                success: false,
+                message: 'CLABE inválida'
+            };
+        }
+        datosNuevos.clabe_interbancaria = clabe;
+    }
+    //Validacion NSS
+    if (datosNuevos.numero_seguro_social) {
+        const nss = datosNuevos.numero_seguro_social.replace(/\s/g, '');
+        if (!/^\d{11}$/.test(nss)) {
+            return {
+                success: false,
+                message: 'NSS inválido'
+            };
+        }
+        datosNuevos.numero_seguro_social = nss;
+    }
+    //Validacion de numero de telefono
+    if (datosNuevos.celular) {
+        const celular = datosNuevos.celular.replace(/\D/g, '');
+        if (celular.length !== 10) {
+            return {
+                success: false,
+                message: 'Celular inválido'
+            };
+        }
+        datosNuevos.celular = celular;
+    }
     const camposPermitidos = [
         "nombre", "apPaterno", "apMaterno",
         "puestoId", "tipoId", "sueldo", "rolId",
@@ -581,27 +640,27 @@ async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
     if (![3].includes(rolSolicitante)) {
         return { success: false, message: 'Solo RH puede eliminar empleados' };
     }
- 
+
     const rows = await query(`
         SELECT u.*, p.nombre_puesto
         FROM usuarios u
         LEFT JOIN puesto p ON u.puestoId = p.puestoId
         WHERE u.usuarioId = ?
     `, [usuarioId]);
- 
+
     if (rows.length === 0) return { success: false, message: 'Empleado no encontrado' };
     const emp = rows[0];
- 
+
     // Calcular tiempo laboral
     let tiempoLaboral = '';
     if (emp.fechaContratacion) {
         const cont = new Date(emp.fechaContratacion);
-        const hoy  = new Date();
-        const años  = hoy.getFullYear() - cont.getFullYear();
+        const hoy = new Date();
+        const años = hoy.getFullYear() - cont.getFullYear();
         const meses = hoy.getMonth() - cont.getMonth();
         tiempoLaboral = `${años} año${años !== 1 ? 's' : ''} ${Math.abs(meses)} mes${Math.abs(meses) !== 1 ? 'es' : ''}`;
     }
- 
+
     // Registrar en historial de bajas
     await query(`
         INSERT INTO bajas (
@@ -613,14 +672,14 @@ async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
     `, [
         emp.usuarioId, emp.nombre, emp.apPaterno, emp.apMaterno, emp.usuario,
         emp.departamento, emp.nombre_puesto, emp.fechaContratacion, emp.sueldo,
-        datosBaja.motivo_baja     || 'otro',
-        datosBaja.motivo_detalle  || null,
+        datosBaja.motivo_baja || 'otro',
+        datosBaja.motivo_detalle || null,
         tiempoLaboral,
-        datosBaja.finiquito       || null,
-        datosBaja.observaciones   || null,
-        datosBaja.registrado_por  || null,
+        datosBaja.finiquito || null,
+        datosBaja.observaciones || null,
+        datosBaja.registrado_por || null,
     ]);
- 
+
     await query('DELETE FROM usuarios WHERE usuarioId = ?', [usuarioId]);
     return { success: true, message: 'Empleado eliminado y baja registrada' };
 };
@@ -657,7 +716,7 @@ async function upsertVehiculo(usuarioId, datos) {
         tiene_vehiculo, tipo, marca, modelo,
         anio, color, placas, num_serie,
     } = datos;
- 
+
     if (existe.length > 0) {
         await query(`
             UPDATE vehiculos SET
@@ -682,7 +741,7 @@ async function getHijosByEmpleado(usuarioId) {
         'SELECT * FROM hijos WHERE usuarioId = ? ORDER BY hijoId', [usuarioId]
     );
 }
- 
+
 async function addHijo(usuarioId, nombre, fecha_nacimiento) {
     const result = await query(
         'INSERT INTO hijos (usuarioId, nombre, fecha_nacimiento) VALUES (?, ?, ?)',
@@ -690,7 +749,7 @@ async function addHijo(usuarioId, nombre, fecha_nacimiento) {
     );
     return { success: true, hijoId: result.insertId };
 }
- 
+
 async function deleteHijo(hijoId) {
     await query('DELETE FROM hijos WHERE hijoId = ?', [hijoId]);
     return { success: true };

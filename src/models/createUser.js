@@ -1,5 +1,5 @@
 const bcrypt = require("bcrypt");
-const jwt    = require("jsonwebtoken");
+const jwt = require("jsonwebtoken");
 const connection = require("../config/connection");
 
 async function createUser(userData) {
@@ -21,11 +21,69 @@ async function createUser(userData) {
         if (existingUser.length > 0) throw new Error("El usuario ya existe");
 
         const hashedPassword = await bcrypt.hash(userData.contrasenia, 10);
-
+        //Validacion de cambios numericos.
+        const camposNumericos = [
+            'sueldo',
+            'sueldo_bruto',
+            'sueldo_neto',
+            'fondo_ahorro'
+        ];
+        for (const campo of camposNumericos) {
+            if (userData[campo] !== undefined && userData[campo] !== null && userData[campo] !== '') {
+                const numero = Number(userData[campo]);
+                if (isNaN(numero)) {
+                    return {
+                        success: false,
+                        message: `${campo} inválido`
+                    };
+                }
+                userData[campo] = numero;
+            }
+        }
+        //RFC Y CURP tranformado a mayusculas
+        if (userData?.RFC) {
+            userData.RFC = userData.RFC.toUpperCase().trim();
+        }
+        if (userData?.curp) {
+            userData.curp = userData.curp.toUpperCase().trim();
+        }
+        //Validacion Clabe Interbancaria
+        if (datosNuevos.clabe_interbancaria) {
+            const clabe = datosNuevos.clabe_interbancaria.replace(/\s/g, '');
+            if (!/^\d{18}$/.test(clabe)) {
+                return {
+                    success: false,
+                    message: 'CLABE inválida'
+                };
+            }
+            datosNuevos.clabe_interbancaria = clabe;
+        }
+        //Validacion NSS
+        if (datosNuevos.numero_seguro_social) {
+            const nss = datosNuevos.numero_seguro_social.replace(/\s/g, '');
+            if (!/^\d{11}$/.test(nss)) {
+                return {
+                    success: false,
+                    message: 'NSS inválido'
+                };
+            }
+            datosNuevos.numero_seguro_social = nss;
+        }
+        //Validacion numero de telefono
+        if (datosNuevos.celular) {
+            const celular = datosNuevos.celular.replace(/\D/g, '');
+            if (celular.length !== 10) {
+                return {
+                    success: false,
+                    message: 'Celular inválido'
+                };
+            }
+            datosNuevos.celular = celular;
+        }
         // Calcular sueldo desglosado
-        const sueldoBruto  = userData.sueldo_bruto ? Number(userData.sueldo_bruto) : (userData.sueldo ? Number(userData.sueldo) : null);
-        const fondoAhorro  = sueldoBruto ? Math.round(sueldoBruto * 0.05 * 100) / 100 : null;
-        const sueldoNeto   = sueldoBruto ? Math.round(sueldoBruto * 0.95 * 100) / 100 : null;
+        const sueldoBruto = userData.sueldo_bruto ? Number(userData.sueldo_bruto) : (userData.sueldo ? Number(userData.sueldo) : null);
+        const fondoAhorro = sueldoBruto ? Math.round(sueldoBruto * 0.05 * 100) / 100 : null;
+        const sueldoNeto = sueldoBruto ? Math.round(sueldoBruto * 0.95 * 100) / 100 : null;
 
         const result = await query(`
             INSERT INTO usuarios (
@@ -83,11 +141,11 @@ async function createUser(userData) {
         ]);
 
         return {
-            success:   true,
-            message:   "Usuario creado exitosamente",
+            success: true,
+            message: "Usuario creado exitosamente",
             usuarioId: result.insertId,
-            usuario:   userData.usuario,
-            rolId:     userData.rolId,
+            usuario: userData.usuario,
+            rolId: userData.rolId,
         };
     } catch (error) {
         console.error("Error al crear usuario:", error);
@@ -113,9 +171,9 @@ async function loginUser(usuario, contrasenia) {
 
         const token = jwt.sign(
             {
-                usuarioId:    user.usuarioId,
-                usuario:      user.usuario,
-                rolId:        user.rolId,
+                usuarioId: user.usuarioId,
+                usuario: user.usuario,
+                rolId: user.rolId,
                 departamento: user.departamento || null,
             },
             process.env.JWT_SECRET,
@@ -127,10 +185,10 @@ async function loginUser(usuario, contrasenia) {
             message: "Login exitoso",
             token,
             usuario: {
-                usuarioId:    user.usuarioId,
-                nombre:       user.nombre,
-                usuario:      user.usuario,
-                rolId:        user.rolId,
+                usuarioId: user.usuarioId,
+                nombre: user.nombre,
+                usuario: user.usuario,
+                rolId: user.rolId,
                 departamento: user.departamento || null,
             },
         };
