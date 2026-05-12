@@ -1742,4 +1742,237 @@ router.post('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => 
         return res.status(500).json({ success: false, message: 'No se pudo guardar' });
     }
 });
+//Endpoints documentos RH
+//Acta adminiiistratiiva
+router.post('/rh/empleados/:id/actas-administrativas', authMiddleware, async (req, res) => {
+    try {
+        const { fecha, hora, falta, fraccion_art47,  declaracion, sancion, observaciones,
+        } = req.body;
+        if (!fecha || !falta) {
+            return res.status(400).json({
+                success: false,
+                message: 'Fecha y falta son requeridas',
+            });
+        }
+        const registradoPor = req.user?.usuarioId || null;
+        const result = await new Promise((resolve, reject) => {
+            connection.query( ` INSERT INTO actas_administrativas (
+                    usuarioId,
+                    fecha,
+                    hora,
+                    falta,
+                    fraccion_art47,
+                    declaracion,
+                    sancion,
+                    observaciones,
+                    registrado_por
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) `,
+                [
+                    req.params.id,
+                    fecha,
+                    hora || null,
+                    falta,
+                    fraccion_art47 || null,
+                    declaracion || null,
+                    sancion || null,
+                    observaciones || null,
+                    registradoPor,
+                ],
+                (err, r) => err ? reject(err) : resolve(r)
+            );
+        });
+        res.status(201).json({
+            success: true,
+            message: 'Acta administrativa registrada correctamente',
+            actaId: result.insertId,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+//Carta compromiso
+router.post('/rh/empleados/:id/cartas-compromiso', authMiddleware, async (req, res) => {
+    try {
+        const { fecha, asunto, descripcion, } = req.body;
+        if (!fecha || !asunto) {
+            return res.status(400).json({
+                success: false,
+                message: 'Fecha y asunto son requeridos',
+            });
+        }
+        const registradoPor = req.user?.usuarioId || null;
+        const result = await new Promise((resolve, reject) => {
+            connection.query(` INSERT INTO cartas_compromiso (
+                    usuarioId,
+                    fecha,
+                    asunto,
+                    descripcion,
+                    registrado_por
+                ) VALUES (?, ?, ?, ?, ?) `,
+                [
+                    req.params.id,
+                    fecha,
+                    asunto,
+                    descripcion || null,
+                    registradoPor,
+                ],
+                (err, r) => err ? reject(err) : resolve(r)
+            );
+        });
+        res.status(201).json({
+            success: true,
+            message: 'Carta compromiso registrada correctamente',
+            cartaId: result.insertId,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+//Responsiva EPP
+router.post('/rh/empleados/:id/responsivas-epp', authMiddleware, async (req, res) => {
+    try {
+        const { fecha, lugar, observaciones, items, } = req.body;
+        if (!fecha) {
+            return res.status(400).json({
+                success: false,
+                message: 'La fecha es requerida',
+            });
+        }
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Agrega al menos un equipo o artículo',
+            });
+        }
+        const registradoPor = req.user?.usuarioId || null;
+        const result = await new Promise((resolve, reject) => {
+            connection.query( `INSERT INTO responsivas_epp (
+                    usuarioId,
+                    fecha,
+                    lugar,
+                    observaciones,
+                    registrado_por
+                ) VALUES (?, ?, ?, ?, ?) `,
+                [
+                    req.params.id,
+                    fecha,
+                    lugar || null,
+                    observaciones || null,
+                    registradoPor,
+                ],
+                (err, r) => err ? reject(err) : resolve(r)
+            );
+        });
+        const responsivaId = result.insertId;
+        for (const item of items) {
+            if (!item.descripcion) continue;
+            await new Promise((resolve, reject) => {
+                connection.query( ` INSERT INTO responsivas_epp_items (
+                        responsivaId,
+                        cantidad,
+                        descripcion,
+                        marca_modelo,
+                        estado
+                    ) VALUES (?, ?, ?, ?, ?) `,
+                    [
+                        responsivaId,
+                        Number(item.cantidad) || 1,
+                        item.descripcion,
+                        item.marca_modelo || null,
+                        item.estado || null,
+                    ],
+                    (err, r) => err ? reject(err) : resolve(r)
+                );
+            });
+        }
+        res.status(201).json({
+            success: true,
+            message: 'Responsiva registrada correctamente',
+            responsivaId,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+//Historial del empledo
+router.get('/rh/empleados/:id/historial-rh', authMiddleware, async (req, res) => {
+    try {
+        const usuarioId = req.params.id
+        const actas = await new Promise((resolve, reject) => {
+            connection.query( `
+                SELECT 
+                    a.*,
+                    u.usuario AS registrado_por_usuario
+                FROM actas_administrativas a
+                LEFT JOIN usuarios u ON a.registrado_por = u.usuarioId
+                WHERE a.usuarioId = ?
+                ORDER BY a.fecha DESC, a.createdAt DESC
+                `,
+                [usuarioId],
+                (err, r) => err ? reject(err) : resolve(r)
+            );
+        });
+        const cartas = await new Promise((resolve, reject) => {
+            connection.query( `
+                SELECT 
+                    c.*,
+                    u.usuario AS registrado_por_usuario
+                FROM cartas_compromiso c
+                LEFT JOIN usuarios u ON c.registrado_por = u.usuarioId
+                WHERE c.usuarioId = ?
+                ORDER BY c.fecha DESC, c.createdAt DESC `,
+                [usuarioId],
+                (err, r) => err ? reject(err) : resolve(r)
+            );
+        });
+        const responsivas = await new Promise((resolve, reject) => {
+            connection.query( `
+                SELECT 
+                    r.*,
+                    u.usuario AS registrado_por_usuario
+                FROM responsivas_epp r
+                LEFT JOIN usuarios u ON r.registrado_por = u.usuarioId
+                WHERE r.usuarioId = ?
+                ORDER BY r.fecha DESC, r.createdAt DESC `,
+                [usuarioId],
+                (err, r) => err ? reject(err) : resolve(r)
+            );
+        });
+        for (const r of responsivas) {
+            const items = await new Promise((resolve, reject) => {
+                connection.query( `
+                    SELECT *
+                    FROM responsivas_epp_items
+                    WHERE responsivaId = ?
+                    ORDER BY itemId `,
+                    [r.responsivaId],
+                    (err, rows) => err ? reject(err) : resolve(rows)
+                );
+            });
+            r.items = items;
+        }
+        res.json({
+            success: true,
+            data: {
+                actas,
+                cartas,
+                responsivas,
+            },
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
 module.exports = router;
