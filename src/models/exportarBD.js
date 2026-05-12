@@ -962,14 +962,15 @@ async function generarExcelContrato(usuarioId) {
         ['Parentesco contacto emergencia', e.emergencia_parentesco || ''],
     ];
 
+    const fillLightGray = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEFEF' }, };
     for (const [campo, valor] of datos) {
         const row = ws.addRow([campo, valor]);
-        row.getCell(1).font = { name: 'Arial', size: 10, bold: true };
-        row.getCell(1).fill = fillGray;
-        row.getCell(1).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFB3A6' } };
         styleRow(row);
+        row.getCell(1).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF222222' },};
+        row.getCell(1).fill = fillLightGray;
+        row.getCell(2).font = { name: 'Arial', size: 10, color: { argb: 'FF222222' },};
+        row.getCell(2).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true,};
     }
-
     return await wb.xlsx.writeBuffer();
 }
 
