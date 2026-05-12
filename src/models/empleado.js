@@ -160,7 +160,7 @@ async function getAllEmpleados(rolId, departamento) {
             u.usuario, u.departamento, u.jefe_inmediato,
             p.nombre_puesto, t.nombre_tipo, r.nombre_rol,
             u.puestoId, u.tipoId, u.rolId, u.foto, u.sueldo,
-            u.fechaContratacion
+            u.fechaContratacion, u.sueldo_neto
         FROM usuarios u
         LEFT JOIN puesto p ON u.puestoId = p.puestoId
         LEFT JOIN tipos  t ON u.tipoId   = t.tipoId
