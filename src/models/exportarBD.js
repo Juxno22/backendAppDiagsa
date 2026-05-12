@@ -928,7 +928,7 @@ async function generarExcelContrato(usuarioId) {
     ];
 
     const titulo = ws.addRow(['DIAGSA — Datos para contrato']);
-    titulo.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+    titulo.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FFB3A6' } };
     titulo.fill = fillRed;
     titulo.alignment = { horizontal: 'center' };
     ws.mergeCells('A1:B1');
