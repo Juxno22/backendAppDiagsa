@@ -8,7 +8,11 @@ const { authMiddleware, soloSupervisor, soloRH, soloMandos, puedeVerDepartamento
 const { upload, subirImagen } = require("../config/cloudinary");
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
-const { generarExcelBD, registrarLog, getExportLogs } = require('../models/exportarBD');
+const { generarExcelBD,
+    generarExcelContrato,
+    registrarLog,
+    getExportLogs,
+    SECCIONES_VALIDAS, } = require('../models/exportarBD');
 const {
     crearPermiso, getPermisosByEmpleado, getTodosPermisos,
     getPermisoById, responderPermiso, deletePermiso,
@@ -1642,36 +1646,77 @@ router.patch('/usuarios/cambiar-contrasena', authMiddleware, async (req, res) =>
     }
 });
 
-// ── Exportar BD a Excel — solo RH ──────────────────────────
+// Exportación general o por sección
 router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
     try {
-        if (req.user.rolId !== 3)
-            return res.status(403).json({ success: false, message: 'Acceso no autorizado' });
-        // Registrar log
-        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || null;
-        await registrarLog(req.user.usuarioId, req.user.usuario, ip);
-        console.log('req.user =>', req.user);
-        const buffer = await generarExcelBD();
+        const seccion = req.query.seccion || 'general';
+        const buffer = await generarExcelBD(seccion);
+        await registrarLog(
+            req.user?.usuarioId,
+            req.user?.usuario,
+            req.ip || req.headers['x-forwarded-for'] || null
+        );
         const fecha = new Date().toISOString().split('T')[0];
-        const nombre = `DIAGSA_BD_${fecha}.xlsx`;
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+        const nombreArchivo = `DIAGSA_${String(seccion).toUpperCase()}_${fecha}.xlsx`;
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${nombreArchivo}"`
+        );
         res.send(buffer);
     } catch (error) {
         console.error('Error al exportar BD:', error);
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Error al exportar base de datos',
+        });
     }
 });
-
-// ── Historial de exportaciones ──────────────────────────────
+// Exportación de datos para contrato por empleado
+router.get('/rh/exportar-bd/contrato/:usuarioId', authMiddleware, async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const buffer = await generarExcelContrato(usuarioId);
+        await registrarLog(
+            req.user?.usuarioId,
+            req.user?.usuario,
+            req.ip || req.headers['x-forwarded-for'] || null
+        );
+        const fecha = new Date().toISOString().split('T')[0];
+        const nombreArchivo = `DIAGSA_CONTRATO_${usuarioId}_${fecha}.xlsx`;
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${nombreArchivo}"`
+        );
+        res.send(buffer);
+    } catch (error) {
+        console.error('Error al exportar contrato:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Error al exportar datos de contrato',
+        });
+    }
+});
 router.get('/rh/exportar-bd/logs', authMiddleware, async (req, res) => {
     try {
-        if (req.user.rolId !== 3)
-            return res.status(403).json({ success: false, message: 'Acceso no autorizado' });
         const logs = await getExportLogs();
-        res.json({ success: true, data: logs });
+        res.json({
+            success: true,
+            data: logs,
+        });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error('Error al obtener logs de exportación:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener historial de exportaciones',
+        });
     }
 });
 //rutas mandos (Gerente / Supervisor)
