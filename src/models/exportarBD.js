@@ -81,7 +81,7 @@ function styleHeader(row, fill = fillRed) {
             name: 'Arial',
             size: 10,
             bold: true,
-            color: { argb: 'FFFFFFFF' },
+            color: { argb: 'FF1F4E79' },
         };
         cell.fill = fill;
         cell.border = borderThin;
@@ -928,7 +928,7 @@ async function generarExcelContrato(usuarioId) {
     ];
 
     const titulo = ws.addRow(['DIAGSA — Datos para contrato']);
-    titulo.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FFB3A6' } };
+    titulo.font = { name: 'Arial', size: 14, bold: true, color: { argb: '030303' } };
     titulo.fill = fillRed;
     titulo.alignment = { horizontal: 'center' };
     ws.mergeCells('A1:B1');
@@ -966,7 +966,7 @@ async function generarExcelContrato(usuarioId) {
         const row = ws.addRow([campo, valor]);
         row.getCell(1).font = { name: 'Arial', size: 10, bold: true };
         row.getCell(1).fill = fillGray;
-        row.getCell(1).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        row.getCell(1).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFB3A6' } };
         styleRow(row);
     }
 
