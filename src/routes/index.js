@@ -1685,4 +1685,35 @@ router.delete('/rh/vacantes/:id', authMiddleware, soloRH, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+router.post('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => {
+    const { id } = req.params;
+    const { sueldo_neto, descuentos = [] } = req.body;
+    try {
+        await connection.beginTransaction();
+        if (sueldo_neto !== undefined && sueldo_neto !== null && sueldo_neto !== '') {
+            await query('UPDATE usuarios SET sueldo_neto = ? WHERE usuarioId = ?', [
+                Number(sueldo_neto),
+                id,
+            ]);
+        }
+        for (const d of descuentos) {
+            await query(`
+                INSERT INTO descuentos (
+                    usuarioId, concepto, monto, tipo, periodicidad, activo
+                ) VALUES (?, ?, ?, ?, ?, 1)
+            `, [
+                id,
+                d.concepto,
+                d.monto,
+                d.tipo || 'descuento',
+                d.periodicidad || 'quincena',
+            ]);
+        }
+        await connection.commit();
+        return res.json({ success: true, message: 'Deducciones guardadas' });
+    } catch (error) {
+        await connection.rollback();
+        return res.status(500).json({ success: false, message: 'No se pudo guardar' });
+    }
+});
 module.exports = router;
