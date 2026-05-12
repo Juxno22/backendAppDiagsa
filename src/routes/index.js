@@ -4,7 +4,7 @@ const bcrypt = require("bcrypt");
 const connection = require("../config/connection");
 const { authMiddleware, soloSupervisor, soloRH, soloMandos, puedeVerDepartamento, ROL_RH, ROL_SUPERVISOR,
     ROL_GERENTE, ROL_AUXILIAR,
- } = require("../middlewares/auth");
+} = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
@@ -491,10 +491,10 @@ router.get('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
         if (isNaN(id)) return res.status(400).json({ success: false, message: 'ID incorrecto' });
- 
+
         const empleado = await getEmpleadoById(id);
         if (!empleado) return res.status(404).json({ success: false, message: 'Empleado no encontrado' });
- 
+
         // Gerente y Auxiliar solo ven su departamento
         if ([ROL_GERENTE, ROL_AUXILIAR].includes(req.user.rolId)) {
             if (empleado.departamento !== req.user.departamento) {
@@ -515,15 +515,15 @@ router.get('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
 router.patch('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
-        const body   = { ...req.body };
- 
+        const body = { ...req.body };
+
         // Auto-calcular fondo ahorro y sueldo neto
         if (body.sueldo) {
             body.fondo_ahorro = Math.round(Number(body.sueldo_bruto) * 0.05 * 100) / 100;
-            body.sueldo_neto  = Math.round(Number(body.sueldo_bruto) * 0.95 * 100) / 100;
-            body.sueldo       = body.sueldo_bruto; // compatibilidad
+            body.sueldo_neto = Math.round(Number(body.sueldo_bruto) * 0.95 * 100) / 100;
+            body.sueldo = body.sueldo_bruto; // compatibilidad
         }
- 
+
         const result = await updateEmpleado(id, body);
         res.status(result.success ? 200 : 400).json(result);
     } catch (error) {
@@ -901,24 +901,24 @@ router.delete('/rh/empleados/:id', authMiddleware, async (req, res) => {
         const { id } = req.params;
         const { contrasenia, motivo_baja, motivo_detalle, finiquito, observaciones } = req.body;
         const rhId = req.user.usuarioId;
- 
+
         if (!contrasenia)
             return res.status(400).json({ success: false, message: 'Se requiere tu contraseña' });
- 
+
         const rows = await new Promise((resolve, reject) => {
             connection.query('SELECT contrasenia FROM usuarios WHERE usuarioId = ?',
                 [rhId], (err, r) => err ? reject(err) : resolve(r));
         });
         if (!rows.length) return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
- 
+
         const match = await bcrypt.compare(contrasenia, rows[0].contrasenia);
         if (!match) return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
- 
+
         const result = await deleteEmpleado(Number(id), req.user.rolId, {
-            motivo_baja:    motivo_baja    || 'otro',
+            motivo_baja: motivo_baja || 'otro',
             motivo_detalle: motivo_detalle || null,
-            finiquito:      finiquito      || null,
-            observaciones:  observaciones  || null,
+            finiquito: finiquito || null,
+            observaciones: observaciones || null,
             registrado_por: rhId,
         });
         res.status(result.success ? 200 : 400).json(result);
@@ -1474,21 +1474,47 @@ router.get('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => {
 });
 router.post('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => {
     try {
-        const { concepto, monto, tipo, periodicidad } = req.body;
-        if (!concepto || !monto) return res.status(400).json({ success: false, message: 'Faltan campos' });
-        const result = await new Promise((resolve, reject) => {
-            connection.query(
-                'INSERT INTO descuentos (usuarioId, concepto, monto, tipo, periodicidad) VALUES (?, ?, ?, ?, ?)',
-                [req.params.id, concepto, monto, tipo || 'descuento', periodicidad || 'quincena'],
-                (err, r) => err ? reject(err) : resolve(r)
-            );
+        const { descuentos } = req.body;
+        if (!Array.isArray(descuentos) || descuentos.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No se enviaron descuentos'
+            });
+        }
+        const inserts = [];
+        for (const d of descuentos) {
+            if (
+                !d.concepto ||
+                d.monto === undefined ||
+                d.monto === null ||
+                d.monto === ''
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Faltan campos'
+                });
+            }
+            const result = await new Promise((resolve, reject) => {
+                connection.query(
+                    ` INSERT INTO descuentos ( usuarioId, concepto, monto, tipo, periodicidad, activo ) VALUES (?, ?, ?, ?, ?, 1) `,
+                    [ req.params.id, d.concepto, Number(d.monto), d.tipo || 'descuento', d.periodicidad || 'quincena' ],
+                    (err, r) => err ? reject(err) : resolve(r)
+                );
+            });
+            inserts.push(result);
+        }
+        res.status(201).json({
+            success: true,
+            message: 'Descuentos guardados correctamente'
         });
-        res.status(201).json({ success: true, descuentoId: result.insertId });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error(error); res.status(500).json({
+            success: false,
+            message: error.message
+        });
     }
 });
- 
+
 router.delete('/rh/descuentos/:id', authMiddleware, async (req, res) => {
     try {
         await new Promise((resolve, reject) => {
@@ -1583,39 +1609,39 @@ router.patch('/usuarios/cambiar-contrasena', authMiddleware, async (req, res) =>
     try {
         const { contrasenaActual, contrasenaNueva } = req.body;
         const usuarioId = req.user.usuarioId;
- 
+
         if (!contrasenaActual || !contrasenaNueva)
             return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
- 
+
         if (contrasenaNueva.length < 6)
             return res.status(400).json({ success: false, message: 'La nueva contraseña debe tener al menos 6 caracteres' });
- 
+
         // Verificar contraseña actual
         const rows = await new Promise((resolve, reject) => {
             connection.query('SELECT contrasenia FROM usuarios WHERE usuarioId = ?',
                 [usuarioId], (err, r) => err ? reject(err) : resolve(r));
         });
- 
+
         if (!rows.length)
             return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
- 
+
         const match = await bcrypt.compare(contrasenaActual, rows[0].contrasenia);
         if (!match)
             return res.status(401).json({ success: false, message: 'La contraseña actual es incorrecta' });
- 
+
         // Guardar nueva contraseña
         const hash = await bcrypt.hash(contrasenaNueva, 10);
         await new Promise((resolve, reject) => {
             connection.query('UPDATE usuarios SET contrasenia = ? WHERE usuarioId = ?',
                 [hash, usuarioId], (err) => err ? reject(err) : resolve(null));
         });
- 
+
         res.json({ success: true, message: 'Contraseña actualizada correctamente' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 });
- 
+
 // ── Exportar BD a Excel — solo RH ──────────────────────────
 router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
     try {
@@ -1624,9 +1650,9 @@ router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
         // Registrar log
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || null;
         await registrarLog(req.user.usuarioId, req.user.usuario, ip);
-        console.log('req.user =>', req.user); 
+        console.log('req.user =>', req.user);
         const buffer = await generarExcelBD();
-        const fecha  = new Date().toISOString().split('T')[0];
+        const fecha = new Date().toISOString().split('T')[0];
         const nombre = `DIAGSA_BD_${fecha}.xlsx`;
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
@@ -1636,7 +1662,7 @@ router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 });
- 
+
 // ── Historial de exportaciones ──────────────────────────────
 router.get('/rh/exportar-bd/logs', authMiddleware, async (req, res) => {
     try {
@@ -1649,33 +1675,33 @@ router.get('/rh/exportar-bd/logs', authMiddleware, async (req, res) => {
     }
 });
 //rutas mandos (Gerente / Supervisor)
-router.post('/mandos/vacantes', authMiddleware, soloMandos, async(req, res)=>{
-    try{
+router.post('/mandos/vacantes', authMiddleware, soloMandos, async (req, res) => {
+    try {
         res.json(await solicitarVacante(req.user.usuarioId, req.body));
-    } catch(error){
-        res.status(500).json({error: error.message});
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     };
 });
-router.get('/mandos/vacantes', authMiddleware, soloMandos, async(req, res)=>{
-    try{
+router.get('/mandos/vacantes', authMiddleware, soloMandos, async (req, res) => {
+    try {
         res.json(await getVacantesSolicitante(req.user.usuarioId));
-    } catch(error){
-        res.status(500).json({error: error.message});
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     };
 });
 //Rutas vacantes RH
-router.get('/rh/vacantes', authMiddleware, soloRH, async(req, res)=>{
-    try{
-        res.json(await  getAllVacantes());
-    } catch(error){
-        res.status(500).json({error: error.message});
+router.get('/rh/vacantes', authMiddleware, soloRH, async (req, res) => {
+    try {
+        res.json(await getAllVacantes());
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     };
 });
-router.put('/rh/vacantes/:id/gestionar', authMiddleware, soloRH, async(req, res)=>{
-    try{
-        res.json( await gestionarVacanteRH(req.params.id, req.body));
-    } catch(error){
-        res.status(500).json({error: error.message});
+router.put('/rh/vacantes/:id/gestionar', authMiddleware, soloRH, async (req, res) => {
+    try {
+        res.json(await gestionarVacanteRH(req.params.id, req.body));
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     };
 });
 router.delete('/rh/vacantes/:id', authMiddleware, soloRH, async (req, res) => {
