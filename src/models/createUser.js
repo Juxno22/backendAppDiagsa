@@ -114,6 +114,36 @@ async function createUser(userData) {
             }
             userData.celular = celular;
         }
+        if (userData.sucursalId && userData.departamentoId) {
+            const relacion = await query(`
+                SELECT id
+                FROM sucursal_departamento
+                WHERE sucursalId = ?
+                    AND departamentoId = ?
+                LIMIT 1
+            `, [userData.sucursalId, userData.departamentoId]);
+            if (relacion.length === 0) {
+                return {
+                    success: false,
+                    message: 'El departamento no pertenece a la sucursal seleccionada',
+                };
+            }
+        }
+        if (userData.departamentoId && userData.puestoId) {
+            const puestoValido = await query(`
+                SELECT puestoId
+                FROM puesto
+                WHERE puestoId = ?
+                    AND departamentoId = ?
+                LIMIT 1
+            `, [userData.puestoId, userData.departamentoId]);
+            if (puestoValido.length === 0) {
+                return {
+                    success: false,
+                    message: 'El puesto no pertenece al departamento seleccionado',
+                };
+            }
+        }
         // Calcular sueldo desglosado
         const sueldoBruto = userData.sueldo_bruto
             ? Number(userData.sueldo_bruto)
@@ -126,7 +156,6 @@ async function createUser(userData) {
         const sueldoNeto = sueldoBruto
             ? Math.round(sueldoBruto * 0.95 * 100) / 100
             : null;
-
         const result = await query(
             `
             INSERT INTO usuarios (
@@ -142,7 +171,8 @@ async function createUser(userData) {
                 emergencia_nombre, emergencia_telefono, emergencia_parentesco,
                 domicilio_calle, domicilio_colonia, domicilio_localidad,
                 domicilio_cp, domicilio_num_ext, domicilio_num_int,
-                domicilio_municipio, domicilio_estado, razon_social, nombre_banco, codigo_postal_fiscal
+                domicilio_municipio, domicilio_estado, razon_social, nombre_banco, codigo_postal_fiscal,
+                sucursalId, departamentoId
             ) VALUES (
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
@@ -152,7 +182,7 @@ async function createUser(userData) {
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
-                ?, ?, ?,
+                ?, ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
@@ -207,6 +237,8 @@ async function createUser(userData) {
                 userData.razon_social || null,
                 userData.nombre_banco || null,
                 userData.codigo_postal_fiscal || null,
+                userData.sucursalId || null,
+                userData.departamentoId || null,
             ],
         );
         const usuarioId = result.insertId;
