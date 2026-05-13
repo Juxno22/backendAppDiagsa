@@ -175,6 +175,7 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
 }
 async function getAllEmpleadosPorAcceso(req) {
     const filtro = await construirFiltroAccesoUsuarios(req);
+
     const sql = `
         SELECT
             u.usuarioId,
@@ -305,7 +306,8 @@ async function updateEmpleado(usuarioId, datosNuevos) {
     }
     const camposPermitidos = [
         "nombre", "apPaterno", "apMaterno",
-        "puestoId", "tipoId", "sueldo", "rolId",
+        "puestoId", "tipoId", "sueldoId", "sueldo", "rolId",
+        "sucursalId", "departamentoId",
         "fechaContratacion", "departamento", "jefe_inmediato",
         "genero", "estado_civil", "numero_seguro_social",
         "RFC", "fecha_nacimiento", "curp", "celular",
@@ -319,7 +321,8 @@ async function updateEmpleado(usuarioId, datosNuevos) {
         "domicilio_calle", "domicilio_colonia", "domicilio_localidad",
         "domicilio_cp", "domicilio_num_ext", "domicilio_num_int",
         "domicilio_municipio", "domicilio_estado",
-        "domicilio_lat", "domicilio_lng", "razon_social", "nombre_banco", "codigo_postal_fiscal"
+        "domicilio_lat", "domicilio_lng", "razon_social",
+        "nombre_banco", "codigo_postal_fiscal",
     ];
     //filtrar solo los campos permitidos
     const camposAActualizar = Object.keys(datosNuevos).filter((k) =>

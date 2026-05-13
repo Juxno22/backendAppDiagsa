@@ -2075,6 +2075,7 @@ router.get('/rh/admin/usuarios/:usuarioId/accesos', authMiddleware, soloRHAdmin,
         });
     }
 });
+// Sucursales
 router.get('/catalogos/sucursales', authMiddleware, async (req, res) => {
     try {
         const rows = await query(`
@@ -2084,6 +2085,7 @@ router.get('/catalogos/sucursales', authMiddleware, async (req, res) => {
             FROM sucursales
             ORDER BY nombre_sucursal
         `);
+
         res.json({
             success: true,
             data: rows,
@@ -2095,18 +2097,41 @@ router.get('/catalogos/sucursales', authMiddleware, async (req, res) => {
         });
     }
 });
+// Departamentos por sucursal
 router.get('/catalogos/sucursales/:sucursalId/departamentos', authMiddleware, async (req, res) => {
     try {
         const rows = await query(`
             SELECT
                 d.departamentoId,
                 d.nombre
-            FROM sucursal_departamentos sd
+            FROM sucursal_departamento sd
             INNER JOIN departamentos d ON sd.departamentoId = d.departamentoId
             WHERE sd.sucursalId = ?
-              AND sd.activo = 1
             ORDER BY d.nombre
         `, [req.params.sucursalId]);
+
+        res.json({
+            success: true,
+            data: rows,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+// Puestos por departamento
+router.get('/catalogos/departamentos/:departamentoId/puestos', authMiddleware, async (req, res) => {
+    try {
+        const rows = await query(`
+            SELECT
+                puestoId,
+                nombre_puesto
+            FROM puesto
+            WHERE departamentoId = ?
+            ORDER BY nombre_puesto
+        `, [req.params.departamentoId]);
 
         res.json({
             success: true,
