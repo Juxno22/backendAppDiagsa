@@ -519,12 +519,9 @@ router.get('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
                 });
             }
         }
-    }
-        res.json({ success: true, data: empleado });
-} catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-}
-});
+    } catch (error) {
+    res.status(500).json({ success: false, message: error.message });}
+})
 /**
  * PATCH /api/supervisor/empleados/:id
  * El supervisor actualiza parcialmente la información de un empleado.
@@ -548,7 +545,7 @@ router.patch('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
-});
+})
 /**
  * POST /api/supervisor/evaluaciones
  * El supervisor registra una nueva evaluación para un empleado.
