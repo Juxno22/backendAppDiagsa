@@ -185,7 +185,7 @@ async function getAllEmpleadosPorAcceso(req) {
             u.departamento,
             u.departamentoId,
             u.sucursalId,
-            s.nombre AS nombre_sucursal,
+            s.nombre_sucursal AS nombre_sucursal,
             u.jefe_inmediato,
             p.nombre_puesto,
             t.nombre_tipo,

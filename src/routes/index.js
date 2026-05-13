@@ -87,6 +87,13 @@ const {
     gestionarVacanteRH,
     deleteVacante,
 } = require('../models/vacantes');
+const query = (sql, values = []) =>
+    new Promise((resolve, reject) => {
+        connection.query(sql, values, (err, results) => {
+            if (err) reject(err);
+            else resolve(results);
+        });
+    });
 // POST /api/rh/empleados/:id/foto
 router.post(
     "/rh/empleados/:id/foto",
@@ -2037,43 +2044,29 @@ router.get('/rh/empleados/:id/historial-rh', authMiddleware, async (req, res) =>
         });
     }
 });
-router.post('/rh/admin/usuarios/:usuarioId/accesos', authMiddleware, soloRHAdmin, async (req, res) => {
+router.get('/rh/admin/usuarios/:usuarioId/accesos', authMiddleware, soloRHAdmin, async (req, res) => {
     try {
-        const { usuarioId } = req.params;
-        const { accesos } = req.body;
-
-        if (!Array.isArray(accesos)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Formato de accesos inválido',
-            });
-        }
-
-        await query('DELETE FROM usuario_accesos WHERE usuarioId = ?', [usuarioId]);
-
-        for (const acceso of accesos) {
-            if (!acceso.sucursalId) continue;
-
-            await query(`
-                INSERT INTO usuario_accesos (
-                    usuarioId,
-                    sucursalId,
-                    departamentoId,
-                    tipo_acceso,
-                    activo
-                )
-                VALUES (?, ?, ?, ?, 1)
-            `, [
-                usuarioId,
-                Number(acceso.sucursalId),
-                acceso.departamentoId ? Number(acceso.departamentoId) : null,
-                acceso.departamentoId ? 'departamento' : 'sucursal',
-            ]);
-        }
+        const rows = await query(`
+            SELECT
+                ua.accesoId,
+                ua.usuarioId,
+                ua.sucursalId,
+                s.nombre_sucursal AS nombre_sucursal,
+                ua.departamentoId,
+                d.nombre AS nombre_departamento,
+                ua.tipo_acceso,
+                ua.activo
+            FROM usuario_accesos ua
+            LEFT JOIN sucursales s ON ua.sucursalId = s.sucursalId
+            LEFT JOIN departamentos d ON ua.departamentoId = d.departamentoId
+            WHERE ua.usuarioId = ?
+              AND ua.activo = 1
+            ORDER BY s.nombre_sucursal, d.nombre
+        `, [req.params.usuarioId]);
 
         res.json({
             success: true,
-            message: 'Accesos actualizados correctamente',
+            data: rows,
         });
     } catch (error) {
         res.status(500).json({
@@ -2085,11 +2078,12 @@ router.post('/rh/admin/usuarios/:usuarioId/accesos', authMiddleware, soloRHAdmin
 router.get('/catalogos/sucursales', authMiddleware, async (req, res) => {
     try {
         const rows = await query(`
-            SELECT sucursalId, nombre_sucursal
+            SELECT 
+                sucursalId,
+                nombre_sucursal AS nombre
             FROM sucursales
             ORDER BY nombre_sucursal
         `);
-
         res.json({
             success: true,
             data: rows,
@@ -2137,7 +2131,7 @@ router.get('/rh/admin/usuarios-acceso', authMiddleware, soloRHAdmin, async (req,
                 u.rolId,
                 r.nombre_rol,
                 u.sucursalId,
-                s.nombre AS nombre_sucursal,
+                s.nombre_sucursal AS nombre_sucursal,
                 u.departamentoId,
                 d.nombre AS nombre_departamento
             FROM usuarios u
