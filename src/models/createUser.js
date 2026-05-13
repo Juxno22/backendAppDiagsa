@@ -131,7 +131,7 @@ async function createUser(userData) {
             `
             INSERT INTO usuarios (
                 nombre, apPaterno, apMaterno, usuario, contrasenia,
-                puestoId, tipoId, rolId,
+                puestoId, tipoId, rolId, sucursalId, departamentoId,
                 fechaContratacion, departamento, jefe_inmediato,
                 sueldo, sueldo_bruto, fondo_ahorro, sueldo_neto,
                 genero, estado_civil, numero_seguro_social, RFC,
@@ -153,9 +153,9 @@ async function createUser(userData) {
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
-                ?, ?, ?,
-                ?, ?, ?,
-                ?, ?,?,?,?
+                ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
             )
         `,
             [
@@ -284,12 +284,13 @@ async function loginUser(usuario, contrasenia) {
                 usuarioId: user.usuarioId,
                 usuario: user.usuario,
                 rolId: user.rolId,
+                sucursalId: user.sucursalId || null,
+                departamentoId: user.departamentoId || null,
                 departamento: user.departamento || null,
             },
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRES_IN || "8h" },
         );
-
         return {
             success: true,
             message: "Login exitoso",
@@ -299,6 +300,8 @@ async function loginUser(usuario, contrasenia) {
                 nombre: user.nombre,
                 usuario: user.usuario,
                 rolId: user.rolId,
+                sucursalId: user.sucursalId || null,
+                departamentoId: user.departamentoId || null,
                 departamento: user.departamento || null,
             },
         };

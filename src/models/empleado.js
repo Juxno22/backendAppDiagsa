@@ -1,4 +1,5 @@
 const connection = require("../config/connection");
+const { construirFiltroAccesoUsuarios } = require('../utils/accesos');
 //Operaciones del empleado
 const query = (sql, values = []) => {
     return new Promise((resolve, reject) => {
@@ -38,6 +39,7 @@ async function getEmpleadoById(usuarioId) {
             u.domicilio_cp, u.domicilio_num_ext, u.domicilio_num_int,
             u.domicilio_municipio, u.domicilio_estado,
             u.domicilio_lat, u.domicilio_lng, u.nombre_banco,  u.codigo_postal_fiscal,
+            u.sucursalId, u.departamentoId, s.nombre AS nombre_sucursal, d.nombre AS nombre_departamento,
             -- Días usados
             COALESCE((
                 SELECT SUM(DATEDIFF(v.fecha_fin_vacaciones, v.fecha_inicio_vacaciones) + 1)
@@ -50,6 +52,8 @@ async function getEmpleadoById(usuarioId) {
         LEFT JOIN puesto  p ON u.puestoId = p.puestoId
         LEFT JOIN tipos   t ON u.tipoId   = t.tipoId
         LEFT JOIN roles   r ON u.rolId    = r.rolId
+        LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
+        LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
         WHERE u.usuarioId = ?
     `;
     const rows = await query(sql, [usuarioId]);
@@ -169,7 +173,41 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
         vacacionesId: result.insertId,
     };
 }
+async function getAllEmpleadosPorAcceso(req) {
+    const filtro = await construirFiltroAccesoUsuarios(req);
+    const sql = `
+        SELECT
+            u.usuarioId,
+            u.nombre,
+            u.apPaterno,
+            u.apMaterno,
+            u.usuario,
+            u.departamento,
+            u.departamentoId,
+            u.sucursalId,
+            s.nombre AS nombre_sucursal,
+            u.jefe_inmediato,
+            p.nombre_puesto,
+            t.nombre_tipo,
+            r.nombre_rol,
+            u.puestoId,
+            u.tipoId,
+            u.rolId,
+            u.foto,
+            u.sueldo,
+            u.fechaContratacion,
+            u.sueldo_neto
+        FROM usuarios u
+        LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
+        LEFT JOIN puesto p ON u.puestoId = p.puestoId
+        LEFT JOIN tipos t ON u.tipoId = t.tipoId
+        LEFT JOIN roles r ON u.rolId = r.rolId
+        ${filtro.where}
+        ORDER BY s.nombre, u.departamento, u.apPaterno, u.nombre
+    `;
 
+    return await query(sql, filtro.params);
+}
 // Filtra por departamento si es Gerente o Auxiliar
 async function getAllEmpleados(rolId, departamento) {
     let sql = `
@@ -655,7 +693,7 @@ async function getDiasVacacionesLFT(usuarioId) {
 }
 // ── deleteEmpleado — registra la baja ─────────────────────────
 async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
-    if (![3].includes(rolSolicitante)) {
+    if (![1, 7].includes(Number(rolSolicitante))) {
         return { success: false, message: 'Solo RH puede eliminar empleados' };
     }
     const rows = await query(`
@@ -785,4 +823,5 @@ module.exports = {
     getHijosByEmpleado,
     addHijo,
     deleteHijo,
+    getAllEmpleadosPorAcceso,
 };

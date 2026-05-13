@@ -2,9 +2,10 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const connection = require("../config/connection");
-const { authMiddleware, soloSupervisor, soloRH, soloMandos, puedeVerDepartamento, ROL_RH, ROL_SUPERVISOR,
-    ROL_GERENTE, ROL_AUXILIAR,
-} = require("../middlewares/auth");
+const { authMiddleware, soloSupervisor, soloRH,
+    soloMandos soloRHAdmin, puedeVerDepartamento,
+    ROL_RHADMIN, ROL_RH, ROL_SUPERVISOR,
+    ROL_GERENTE, ROL_COLABORADOR, } = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
@@ -68,6 +69,7 @@ const {
     getHijosByEmpleado,
     addHijo,
     deleteHijo,
+    getAllEmpleadosPorAcceso
 } = require("../models/empleado");
 const {
     getSecciones,
@@ -322,6 +324,8 @@ router.post("/createuser", authMiddleware, async (req, res) => {
             "rolId",
             "fechaContratacion",
             "departamento",
+            "sucursalId",
+            "departamentoId",
         ];
         const missingFields = requiredFields.filter((field) => !req.body[field]);
         if (missingFields.length > 0) {
@@ -330,7 +334,7 @@ router.post("/createuser", authMiddleware, async (req, res) => {
                 message: `Faltan campos requeridos: ${missingFields.join(", ")}`,
             });
         }
-        const idFields = ["puestoId", "rolId"];
+        const idFields = ["puestoId", "rolId", "sucursalId", "departamentoId"];
         for (const field of idFields) {
             if (isNaN(req.body[field])) {
                 return res.status(400).json({
@@ -480,11 +484,16 @@ router.post(
  */
 router.get('/supervisor/empleados', authMiddleware, async (req, res) => {
     try {
-        const { rolId, departamento } = req.user;
-        const empleados = await getAllEmpleados(rolId, departamento);
-        res.json({ success: true, data: empleados });
+        const empleados = await getAllEmpleadosPorAcceso(req);
+        res.json({
+            success: true,
+            data: empleados,
+        });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
     }
 });
 /**
@@ -499,16 +508,22 @@ router.get('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
         const empleado = await getEmpleadoById(id);
         if (!empleado) return res.status(404).json({ success: false, message: 'Empleado no encontrado' });
 
-        // Gerente y Auxiliar solo ven su departamento
-        if ([ROL_GERENTE, ROL_AUXILIAR].includes(req.user.rolId)) {
-            if (empleado.departamento !== req.user.departamento) {
-                return res.status(403).json({ success: false, message: 'No tienes acceso a este empleado' });
+        if (req.user.rolId === ROL_GERENTE) {
+            if (
+                Number(empleado.sucursalId) !== Number(req.user.sucursalId) ||
+                Number(empleado.departamentoId) !== Number(req.user.departamentoId)
+            ) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No tienes acceso a este empleado',
+                });
             }
         }
-        res.json({ success: true, data: empleado });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
     }
+        res.json({ success: true, data: empleado });
+} catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+}
 });
 /**
  * PATCH /api/supervisor/empleados/:id
@@ -926,7 +941,7 @@ router.delete('/rh/empleados/:id', authMiddleware, async (req, res) => {
         const result = await deleteEmpleado(Number(id), req.user.rolId, {
             motivo_baja: motivo_baja || 'otro',
             motivo_detalle: motivo_detalle || null,
-            finiquito: finiquito !== undefined && finiquito !== null && finiquito !== '' ? Number(finiquito): null,
+            finiquito: finiquito !== undefined && finiquito !== null && finiquito !== '' ? Number(finiquito) : null,
             observaciones: observaciones || null,
             registrado_por: rhId,
         });
@@ -1506,7 +1521,7 @@ router.post('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => 
             const result = await new Promise((resolve, reject) => {
                 connection.query(
                     ` INSERT INTO descuentos ( usuarioId, concepto, monto, tipo, periodicidad, activo ) VALUES (?, ?, ?, ?, ?, 1) `,
-                    [ req.params.id, d.concepto, Number(d.monto), d.tipo || 'descuento', d.periodicidad || 'quincena' ],
+                    [req.params.id, d.concepto, Number(d.monto), d.tipo || 'descuento', d.periodicidad || 'quincena'],
                     (err, r) => err ? reject(err) : resolve(r)
                 );
             });
@@ -1796,7 +1811,7 @@ router.post('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => 
 //Acta adminiiistratiiva
 router.post('/rh/empleados/:id/actas-administrativas', authMiddleware, async (req, res) => {
     try {
-        const { fecha, hora, falta, fraccion_art47,  declaracion, sancion, observaciones,
+        const { fecha, hora, falta, fraccion_art47, declaracion, sancion, observaciones,
         } = req.body;
         if (!fecha || !falta) {
             return res.status(400).json({
@@ -1806,7 +1821,7 @@ router.post('/rh/empleados/:id/actas-administrativas', authMiddleware, async (re
         }
         const registradoPor = req.user?.usuarioId || null;
         const result = await new Promise((resolve, reject) => {
-            connection.query( ` INSERT INTO actas_administrativas (
+            connection.query(` INSERT INTO actas_administrativas (
                     usuarioId,
                     fecha,
                     hora,
@@ -1902,7 +1917,7 @@ router.post('/rh/empleados/:id/responsivas-epp', authMiddleware, async (req, res
         }
         const registradoPor = req.user?.usuarioId || null;
         const result = await new Promise((resolve, reject) => {
-            connection.query( `INSERT INTO responsivas_epp (
+            connection.query(`INSERT INTO responsivas_epp (
                     usuarioId,
                     fecha,
                     lugar,
@@ -1923,7 +1938,7 @@ router.post('/rh/empleados/:id/responsivas-epp', authMiddleware, async (req, res
         for (const item of items) {
             if (!item.descripcion) continue;
             await new Promise((resolve, reject) => {
-                connection.query( ` INSERT INTO responsivas_epp_items (
+                connection.query(` INSERT INTO responsivas_epp_items (
                         responsivaId,
                         cantidad,
                         descripcion,
@@ -1958,7 +1973,7 @@ router.get('/rh/empleados/:id/historial-rh', authMiddleware, async (req, res) =>
     try {
         const usuarioId = req.params.id
         const actas = await new Promise((resolve, reject) => {
-            connection.query( `
+            connection.query(`
                 SELECT 
                     a.*,
                     u.usuario AS registrado_por_usuario
@@ -1972,7 +1987,7 @@ router.get('/rh/empleados/:id/historial-rh', authMiddleware, async (req, res) =>
             );
         });
         const cartas = await new Promise((resolve, reject) => {
-            connection.query( `
+            connection.query(`
                 SELECT 
                     c.*,
                     u.usuario AS registrado_por_usuario
@@ -1985,7 +2000,7 @@ router.get('/rh/empleados/:id/historial-rh', authMiddleware, async (req, res) =>
             );
         });
         const responsivas = await new Promise((resolve, reject) => {
-            connection.query( `
+            connection.query(`
                 SELECT 
                     r.*,
                     u.usuario AS registrado_por_usuario
@@ -1999,7 +2014,7 @@ router.get('/rh/empleados/:id/historial-rh', authMiddleware, async (req, res) =>
         });
         for (const r of responsivas) {
             const items = await new Promise((resolve, reject) => {
-                connection.query( `
+                connection.query(`
                     SELECT *
                     FROM responsivas_epp_items
                     WHERE responsivaId = ?
@@ -2017,6 +2032,128 @@ router.get('/rh/empleados/:id/historial-rh', authMiddleware, async (req, res) =>
                 cartas,
                 responsivas,
             },
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+router.post('/rh/admin/usuarios/:usuarioId/accesos', authMiddleware, soloRHAdmin, async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const { accesos } = req.body;
+
+        if (!Array.isArray(accesos)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Formato de accesos inválido',
+            });
+        }
+
+        await query('DELETE FROM usuario_accesos WHERE usuarioId = ?', [usuarioId]);
+
+        for (const acceso of accesos) {
+            if (!acceso.sucursalId) continue;
+
+            await query(`
+                INSERT INTO usuario_accesos (
+                    usuarioId,
+                    sucursalId,
+                    departamentoId,
+                    tipo_acceso,
+                    activo
+                )
+                VALUES (?, ?, ?, ?, 1)
+            `, [
+                usuarioId,
+                Number(acceso.sucursalId),
+                acceso.departamentoId ? Number(acceso.departamentoId) : null,
+                acceso.departamentoId ? 'departamento' : 'sucursal',
+            ]);
+        }
+
+        res.json({
+            success: true,
+            message: 'Accesos actualizados correctamente',
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+router.get('/catalogos/sucursales', authMiddleware, async (req, res) => {
+    try {
+        const rows = await query(`
+            SELECT sucursalId, nombre_sucursal
+            FROM sucursales
+            ORDER BY nombre_sucursal
+        `);
+
+        res.json({
+            success: true,
+            data: rows,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+router.get('/catalogos/sucursales/:sucursalId/departamentos', authMiddleware, async (req, res) => {
+    try {
+        const rows = await query(`
+            SELECT
+                d.departamentoId,
+                d.nombre
+            FROM sucursal_departamentos sd
+            INNER JOIN departamentos d ON sd.departamentoId = d.departamentoId
+            WHERE sd.sucursalId = ?
+              AND sd.activo = 1
+            ORDER BY d.nombre
+        `, [req.params.sucursalId]);
+
+        res.json({
+            success: true,
+            data: rows,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+router.get('/rh/admin/usuarios-acceso', authMiddleware, soloRHAdmin, async (req, res) => {
+    try {
+        const rows = await query(`
+            SELECT
+                u.usuarioId,
+                u.nombre,
+                u.apPaterno,
+                u.apMaterno,
+                u.usuario,
+                u.rolId,
+                r.nombre_rol,
+                u.sucursalId,
+                s.nombre AS nombre_sucursal,
+                u.departamentoId,
+                d.nombre AS nombre_departamento
+            FROM usuarios u
+            LEFT JOIN roles r ON u.rolId = r.rolId
+            LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
+            LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
+            WHERE u.rolId IN (1, 2, 3, 7)
+            ORDER BY u.rolId, u.apPaterno, u.nombre
+        `);
+
+        res.json({
+            success: true,
+            data: rows,
         });
     } catch (error) {
         res.status(500).json({
