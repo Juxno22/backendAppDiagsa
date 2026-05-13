@@ -39,7 +39,7 @@ async function getEmpleadoById(usuarioId) {
             u.domicilio_cp, u.domicilio_num_ext, u.domicilio_num_int,
             u.domicilio_municipio, u.domicilio_estado,
             u.domicilio_lat, u.domicilio_lng, u.nombre_banco,  u.codigo_postal_fiscal,
-            u.sucursalId, u.departamentoId, s.nombre AS nombre_sucursal, d.nombre AS nombre_departamento,
+            u.sucursalId, u.departamentoId, s.nombre_sucursal AS nombre_sucursal, d.nombre AS nombre_departamento,
             -- Días usados
             COALESCE((
                 SELECT SUM(DATEDIFF(v.fecha_fin_vacaciones, v.fecha_inicio_vacaciones) + 1)
@@ -203,7 +203,7 @@ async function getAllEmpleadosPorAcceso(req) {
         LEFT JOIN tipos t ON u.tipoId = t.tipoId
         LEFT JOIN roles r ON u.rolId = r.rolId
         ${filtro.where}
-        ORDER BY s.nombre, u.departamento, u.apPaterno, u.nombre
+        ORDER BY s.nombre_sucursal, u.departamento, u.apPaterno, u.nombre
     `;
 
     return await query(sql, filtro.params);
