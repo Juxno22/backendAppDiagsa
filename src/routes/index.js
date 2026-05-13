@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require("bcrypt");
 const connection = require("../config/connection");
 const { authMiddleware, soloSupervisor, soloRH,
-    soloMandos soloRHAdmin, puedeVerDepartamento,
+    soloMandos, soloRHAdmin, puedeVerDepartamento,
     ROL_RHADMIN, ROL_RH, ROL_SUPERVISOR,
     ROL_GERENTE, ROL_COLABORADOR, } = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
