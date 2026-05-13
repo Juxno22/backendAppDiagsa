@@ -904,24 +904,29 @@ router.delete('/rh/empleados/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
         const { contrasenia, motivo_baja, motivo_detalle, finiquito, observaciones } = req.body;
-        const rhId = req.user.usuarioId;
-
+        const rhId = req.user.usuarioId
         if (!contrasenia)
             return res.status(400).json({ success: false, message: 'Se requiere tu contraseña' });
-
+        if (finiquito !== undefined && finiquito !== null && finiquito !== '') {
+            const finiquitoNum = Number(finiquito);
+            if (isNaN(finiquitoNum)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Finiquito inválido',
+                });
+            }
+        };
         const rows = await new Promise((resolve, reject) => {
             connection.query('SELECT contrasenia FROM usuarios WHERE usuarioId = ?',
                 [rhId], (err, r) => err ? reject(err) : resolve(r));
         });
         if (!rows.length) return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
-
         const match = await bcrypt.compare(contrasenia, rows[0].contrasenia);
         if (!match) return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
-
         const result = await deleteEmpleado(Number(id), req.user.rolId, {
             motivo_baja: motivo_baja || 'otro',
             motivo_detalle: motivo_detalle || null,
-            finiquito: finiquito || null,
+            finiquito: finiquito !== undefined && finiquito !== null && finiquito !== '' ? Number(finiquito): null,
             observaciones: observaciones || null,
             registrado_por: rhId,
         });

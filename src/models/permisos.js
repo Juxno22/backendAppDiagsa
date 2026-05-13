@@ -4,7 +4,16 @@ const connection = require('../config/connection');
 const query = (sql, values = []) => new Promise((resolve, reject) => {
     connection.query(sql, values, (err, results) => err ? reject(err) : resolve(results));
 });
-
+function fechaLocalYYYYMMDD(fecha = new Date()) {
+    const y = fecha.getFullYear();
+    const m = String(fecha.getMonth() + 1).padStart(2, '0');
+    const d = String(fecha.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+function esFechaAnteriorAHoy(fecha) {
+    if (!fecha) return false;
+    return String(fecha).split('T')[0] < fechaLocalYYYYMMDD();
+}
 async function crearPermiso(usuarioId, datos) {
     const {
         fecha_elaboracion, fecha_permiso, tipo,
@@ -14,7 +23,40 @@ async function crearPermiso(usuarioId, datos) {
         entrada_corrido, salida_corrido, dias_corrido, mes_corrido,
         motivo, goce_sueldo,
     } = datos;
-
+    if (esFechaAnteriorAHoy(fecha_permiso)) {
+        return {
+            success: false,
+            message: 'No puedes solicitar permisos para días anteriores',
+        };
+    }
+    if (tipo === 'dia') {
+        if (esFechaAnteriorAHoy(fecha_inicio)) {
+            return {
+                success: false,
+                message: 'La fecha de inicio no puede ser anterior a hoy',
+            };
+        }
+        if (esFechaAnteriorAHoy(fecha_fin)) {
+            return {
+                success: false,
+                message: 'La fecha de fin no puede ser anterior a hoy',
+            };
+        }
+        if (fecha_inicio && fecha_fin && fecha_fin < fecha_inicio) {
+            return {
+                success: false,
+                message: 'La fecha de fin no puede ser menor a la fecha de inicio',
+            };
+        }
+    }
+    if (tipo === 'horas') {
+        if (esFechaAnteriorAHoy(dia_permiso)) {
+            return {
+                success: false,
+                message: 'El día del permiso no puede ser anterior a hoy',
+            };
+        }
+    }
     const result = await query(`
         INSERT INTO permisos (
             usuarioId, fecha_elaboracion, fecha_permiso, tipo,

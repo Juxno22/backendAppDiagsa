@@ -97,6 +97,18 @@ async function getVacacionesByEmpleado(usuarioId) {
     `;
     return await query(sql, [usuarioId]);
 }
+function fechaLocalYYYYMMDD(fecha = new Date()) {
+    const y = fecha.getFullYear();
+    const m = String(fecha.getMonth() + 1).padStart(2, '0');
+    const d = String(fecha.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+function sumarDiasYYYYMMDD(dias) {
+    const fecha = new Date();
+    fecha.setHours(0, 0, 0, 0);
+    fecha.setDate(fecha.getDate() + dias);
+    return fechaLocalYYYYMMDD(fecha);
+}
 /**
  * Crear una nueva solicitud de vacaciones para un empleado.
  * Validar que las fechas sean coherentes antes de insertar.
@@ -110,7 +122,13 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
     if (new Date(fechaInicio) > new Date(fechaFin)) {
         return { success: false, message: 'La fecha de inicio debe ser anterior a la fecha de fin' };
     }
-
+    const fechaMinimaVacaciones = sumarDiasYYYYMMDD(14);
+    if (String(fechaInicio).split('T')[0] < fechaMinimaVacaciones) {
+        return {
+            success: false,
+            message: 'Las vacaciones deben solicitarse con mínimo 2 semanas de anticipación',
+        };
+    }
     const diasExist = await query(
         'SELECT * FROM diasvacaciones WHERE dias_vacacionesId = ?',
         [dias_vacacionesId]
@@ -640,17 +658,14 @@ async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
     if (![3].includes(rolSolicitante)) {
         return { success: false, message: 'Solo RH puede eliminar empleados' };
     }
-
     const rows = await query(`
         SELECT u.*, p.nombre_puesto
         FROM usuarios u
         LEFT JOIN puesto p ON u.puestoId = p.puestoId
         WHERE u.usuarioId = ?
     `, [usuarioId]);
-
     if (rows.length === 0) return { success: false, message: 'Empleado no encontrado' };
     const emp = rows[0];
-
     // Calcular tiempo laboral
     let tiempoLaboral = '';
     if (emp.fechaContratacion) {
@@ -660,7 +675,6 @@ async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
         const meses = hoy.getMonth() - cont.getMonth();
         tiempoLaboral = `${años} año${años !== 1 ? 's' : ''} ${Math.abs(meses)} mes${Math.abs(meses) !== 1 ? 'es' : ''}`;
     }
-
     // Registrar en historial de bajas
     await query(`
         INSERT INTO bajas (
@@ -679,7 +693,6 @@ async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
         datosBaja.observaciones || null,
         datosBaja.registrado_por || null,
     ]);
-
     await query('DELETE FROM usuarios WHERE usuarioId = ?', [usuarioId]);
     return { success: true, message: 'Empleado eliminado y baja registrada' };
 };
