@@ -19,29 +19,32 @@ async function getEmpleadoById(usuarioId) {
         SELECT
             u.usuarioId, u.nombre, u.apPaterno, u.apMaterno,
             u.usuario, u.fechaContratacion, u.departamento, u.jefe_inmediato,
+            u.sucursalId, u.departamentoId,
+            s.nombre_sucursal AS nombre_sucursal,
+            d.nombre AS nombre_departamento,
             p.nombre_puesto, t.nombre_tipo,
             r.nombre_rol, u.puestoId, u.tipoId, u.rolId,
             u.foto, u.sueldo, u.sueldo_bruto, u.fondo_ahorro, u.sueldo_neto,
-            u.sueldo_compensacion, u.sueldo_final,  
-            -- Personales
+            u.sueldo_compensacion, u.sueldo_final,
+
             u.genero, u.estado_civil, u.numero_seguro_social,
             u.RFC, u.fecha_nacimiento, u.curp, u.celular,
             u.es_padre_madre, u.fecha_contrato_indeterminado_3m,
-            -- Uniformes
+
             u.talla_playera, u.talla_pantalon, u.talla_calzado,
             u.talla_faja, u.talla_guantes,
-            -- Fiscal adicional
+
             u.numero_cuenta, u.clabe_interbancaria, u.codigo_postal,
             u.infonavit, u.fonacot, u.pdf_rfc, u.pdf_psicometrico, u.razon_social,
-            -- Contacto emergencia
+            u.nombre_banco, u.codigo_postal_fiscal,
+
             u.emergencia_nombre, u.emergencia_telefono, u.emergencia_parentesco,
-            -- Domicilio
+
             u.domicilio_calle, u.domicilio_colonia, u.domicilio_localidad,
             u.domicilio_cp, u.domicilio_num_ext, u.domicilio_num_int,
             u.domicilio_municipio, u.domicilio_estado,
-            u.domicilio_lat, u.domicilio_lng, u.nombre_banco,  u.codigo_postal_fiscal,
-            u.sucursalId, u.departamentoId, s.nombre_sucursal AS nombre_sucursal, d.nombre AS nombre_departamento,
-            -- Días usados
+            u.domicilio_lat, u.domicilio_lng,
+
             COALESCE((
                 SELECT SUM(DATEDIFF(v.fecha_fin_vacaciones, v.fecha_inicio_vacaciones) + 1)
                 FROM vacaciones v
@@ -50,32 +53,51 @@ async function getEmpleadoById(usuarioId) {
                   AND v.fecha_inicio_vacaciones >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)
             ), 0) AS dias_usados
         FROM usuarios u
-        LEFT JOIN puesto  p ON u.puestoId = p.puestoId
-        LEFT JOIN tipos   t ON u.tipoId   = t.tipoId
-        LEFT JOIN roles   r ON u.rolId    = r.rolId
         LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
         LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
+        LEFT JOIN puesto p ON u.puestoId = p.puestoId
+        LEFT JOIN tipos t ON u.tipoId = t.tipoId
+        LEFT JOIN roles r ON u.rolId = r.rolId
         WHERE u.usuarioId = ?
+        LIMIT 1
     `;
+    console.log('[getEmpleadoById] antes query principal');
     const rows = await query(sql, [usuarioId]);
+    console.log('[getEmpleadoById] despues query principal', rows.length);
     if (rows.length === 0) return null;
-
     const emp = rows[0];
     const dias = calcularDiasVacacionesLFT(emp.fechaContratacion);
-    const diasRestantes = Math.max(0, dias - emp.dias_usados);
-
-    // Cargar vehículo, hijos y descuentos
+    const diasRestantes = Math.max(0, dias - Number(emp.dias_usados || 0));
+    console.log('[getEmpleadoById] antes queries extra');
     const [vehiculos, hijos, descuentos] = await Promise.all([
-        query(` SELECT * FROM vehiculos WHERE usuarioId = ? AND tiene_vehiculo = 1 ORDER BY vehiculoId`, [emp.usuarioId]),
-        query('SELECT * FROM hijos WHERE usuarioId = ? ORDER BY hijoId', [emp.usuarioId]),
-        query('SELECT * FROM descuentos WHERE usuarioId = ? AND activo = 1 ORDER BY descuentoId', [emp.usuarioId]),
+        query(`
+            SELECT *
+            FROM vehiculos
+            WHERE usuarioId = ?
+              AND tiene_vehiculo = 1
+            ORDER BY vehiculoId
+        `, [emp.usuarioId]),
+        query(`
+            SELECT *
+            FROM hijos
+            WHERE usuarioId = ?
+            ORDER BY hijoId
+        `, [emp.usuarioId]),
+        query(`
+            SELECT *
+            FROM descuentos
+            WHERE usuarioId = ?
+              AND activo = 1
+            ORDER BY descuentoId
+        `, [emp.usuarioId]),
     ]);
+    console.log('[getEmpleadoById] despues queries extra');
     return {
         ...emp,
         dias_vacaciones_lft: dias,
         dias_restantes: diasRestantes,
         vehiculos: vehiculos || [],
-        vehiculo: vehiculos[0] || null,
+        vehiculo: vehiculos?.[0] || null,
         hijos: hijos || [],
         descuentos: descuentos || [],
     };

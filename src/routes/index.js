@@ -511,26 +511,36 @@ router.get('/supervisor/empleados', authMiddleware, async (req, res) => {
 router.get('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
-        if (isNaN(id)) return res.status(400).json({ success: false, message: 'ID incorrecto' });
-
-        const empleado = await getEmpleadoById(id);
-        if (!empleado) return res.status(404).json({ success: false, message: 'Empleado no encontrado' });
-
-        if (req.user.rolId === ROL_GERENTE) {
-            if (
-                Number(empleado.sucursalId) !== Number(req.user.sucursalId) ||
-                Number(empleado.departamentoId) !== Number(req.user.departamentoId)
-            ) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tienes acceso a este empleado',
-                });
-            }
+        console.log('[GET empleado by ID] inicio', {
+            id,
+            usuarioId: req.user?.usuarioId,
+            rolId: req.user?.rolId,
+            sucursalId: req.user?.sucursalId,
+            departamentoId: req.user?.departamentoId,
+        });
+        const empleado = await getEmpleadoById(Number(id));
+        console.log('[GET empleado by ID] resultado', {
+            id,
+            encontrado: !!empleado,
+        });
+        if (!empleado) {
+            return res.status(404).json({
+                success: false,
+                message: 'Empleado no encontrado',
+            });
         }
+        return res.json({
+            success: true,
+            data: empleado,
+        });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error('[GET empleado by ID] error:', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener empleado',
+        });
     }
-})
+});
 /**
  * PATCH /api/supervisor/empleados/:id
  * El supervisor actualiza parcialmente la información de un empleado.
