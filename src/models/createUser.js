@@ -164,31 +164,38 @@ async function createUser(userData) {
             : sueldoCompensacion;
         const result = await query(
             `
-            INSERT INTO usuarios (
-                nombre, apPaterno, apMaterno, usuario, contrasenia,
-                puestoId, tipoId, rolId, sucursalId, departamentoId,
-                fechaContratacion, departamento, jefe_inmediato,
-                sueldo, sueldo_bruto, fondo_ahorro, sueldo_neto, sueldo_compensacion, sueldo_final,
-                genero, estado_civil, numero_seguro_social, RFC,
-                fecha_nacimiento, curp, celular, es_padre_madre,
-                fecha_contrato_indeterminado_3m,
-                talla_playera, talla_pantalon, talla_calzado, talla_faja, talla_guantes,
-                numero_cuenta, clabe_interbancaria, codigo_postal, infonavit, fonacot,
-                emergencia_nombre, emergencia_telefono, emergencia_parentesco,
-                domicilio_calle, domicilio_colonia, domicilio_localidad,
-                domicilio_cp, domicilio_num_ext, domicilio_num_int,
-                domicilio_municipio, domicilio_estado, razon_social, nombre_banco, codigo_postal_fiscal) VALUES (
-                ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ? ) `,
+    INSERT INTO usuarios (
+        nombre, apPaterno, apMaterno, usuario, contrasenia,
+        puestoId, tipoId, rolId, sucursalId, departamentoId,
+        fechaContratacion, departamento, jefe_inmediato,
+        sueldo, sueldo_bruto, fondo_ahorro, sueldo_neto, sueldo_compensacion, sueldo_final,
+        genero, estado_civil, numero_seguro_social, RFC,
+        fecha_nacimiento, curp, celular, es_padre_madre,
+        fecha_contrato_indeterminado_3m,
+        talla_playera, talla_pantalon, talla_calzado, talla_faja, talla_guantes,
+        numero_cuenta, clabe_interbancaria, codigo_postal, infonavit, fonacot,
+        emergencia_nombre, emergencia_telefono, emergencia_parentesco,
+        domicilio_calle, domicilio_colonia, domicilio_localidad,
+        domicilio_cp, domicilio_num_ext, domicilio_num_int,
+        domicilio_municipio, domicilio_estado,
+        razon_social, nombre_banco, codigo_postal_fiscal
+    ) VALUES (
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?
+    )
+    `,
             [
                 userData.nombre,
                 userData.apPaterno,
@@ -198,6 +205,8 @@ async function createUser(userData) {
                 userData.puestoId,
                 userData.tipoId || null,
                 userData.rolId,
+                userData.sucursalId || null,
+                userData.departamentoId || null,
                 userData.fechaContratacion,
                 userData.departamento,
                 userData.jefe_inmediato || null,
@@ -240,8 +249,6 @@ async function createUser(userData) {
                 userData.razon_social || null,
                 userData.nombre_banco || null,
                 userData.codigo_postal_fiscal || null,
-                userData.sucursalId || null,
-                userData.departamentoId || null,
             ],
         );
         const usuarioId = result.insertId;
