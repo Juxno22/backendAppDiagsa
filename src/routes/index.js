@@ -7,6 +7,7 @@ const { authMiddleware, soloSupervisor, soloRH,
     ROL_RHADMIN, ROL_RH, ROL_SUPERVISOR,
     ROL_GERENTE, ROL_COLABORADOR, } = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
+const { uploadPDF, subirPDF } = require('../config/cloudinary');
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
 const { generarExcelBD,
@@ -527,7 +528,8 @@ router.get('/supervisor/empleados/:id', authMiddleware, async (req, res) => {
             }
         }
     } catch (error) {
-    res.status(500).json({ success: false, message: error.message });}
+        res.status(500).json({ success: false, message: error.message });
+    }
 })
 /**
  * PATCH /api/supervisor/empleados/:id
@@ -2178,4 +2180,62 @@ router.get('/rh/admin/usuarios-acceso', authMiddleware, soloRHAdmin, async (req,
         });
     }
 });
+router.post('/rh/empleados/:id/documentos', authMiddleware, soloRH, uploadPDF.fields([
+    { name: 'pdf_rfc', maxCount: 1 },
+    { name: 'pdf_psicometrico', maxCount: 1 },
+]),
+    async (req, res) => {
+        try {
+            const { id } = req.params;
+            const archivos = req.files || {};
+            const pdfRfc = archivos.pdf_rfc?.[0] || null;
+            const pdfPsicometrico = archivos.pdf_psicometrico?.[0] || null;
+            if (!pdfRfc && !pdfPsicometrico) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'No se enviaron documentos',
+                });
+            }
+            const updates = [];
+            const values = [];
+            const respuesta = {};
+            if (pdfRfc) {
+                const urlRfc = await subirPDF(
+                    pdfRfc.buffer,
+                    `diagsa/empleados/${id}/documentos`,
+                    `rfc_${id}`
+                );
+                updates.push('pdf_rfc = ?');
+                values.push(urlRfc);
+                respuesta.pdf_rfc = urlRfc;
+            }
+            if (pdfPsicometrico) {
+                const urlPsicometrico = await subirPDF(
+                    pdfPsicometrico.buffer,
+                    `diagsa/empleados/${id}/documentos`,
+                    `psicometrico_${id}`
+                );
+                updates.push('pdf_psicometrico = ?');
+                values.push(urlPsicometrico);
+                respuesta.pdf_psicometrico = urlPsicometrico;
+            }
+            values.push(id);
+            await query(`
+                UPDATE usuarios
+                SET ${updates.join(', ')}
+                WHERE usuarioId = ?
+            `, values);
+            res.json({
+                success: true,
+                message: 'Documentos guardados correctamente',
+                data: respuesta,
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: error.message,
+            });
+        }
+    }
+);
 module.exports = router;

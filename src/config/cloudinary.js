@@ -1,21 +1,21 @@
 // src/config/cloudinary.js
 const cloudinary = require('cloudinary').v2;
-const multer     = require('multer');
-
+const multer = require('multer');
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key:    process.env.CLOUDINARY_API_KEY,
+    api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true,
 });
-
-// Multer — almacenamiento en memoria (no en disco)
-const storage = multer.memoryStorage();
-
+// Multer para imágenes — foto de perfil
 const upload = multer({
-    storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB máximo
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024, // 5 MB
+    },
     fileFilter: (req, file, cb) => {
         const permitidos = ['image/jpeg', 'image/png', 'image/webp'];
+
         if (permitidos.includes(file.mimetype)) {
             cb(null, true);
         } else {
@@ -23,21 +23,31 @@ const upload = multer({
         }
     },
 });
-
+// Multer para PDFs — documentos RH
+const uploadPDF = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10 MB
+    },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf') {
+            cb(null, true);
+        } else {
+            cb(new Error('Solo se permiten archivos PDF'));
+        }
+    },
+});
 /**
  * Sube una imagen a Cloudinary.
- * @param {Buffer} buffer    - Buffer de la imagen
- * @param {string} folder    - Carpeta en Cloudinary
- * @param {string} publicId  - Nombre del archivo
- * @returns {Promise<string>} URL de la imagen
  */
 async function subirImagen(buffer, folder = 'diagsa_empleados', publicId) {
     return new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
             {
-                folder,                    // ← 'diagsa_empleados'
-                public_id:   publicId,     // ← 'empleado_3'
-                overwrite:   true,
+                resource_type: 'image',
+                folder,
+                public_id: publicId,
+                overwrite: true,
                 transformation: [
                     { width: 200, height: 200, crop: 'fill', gravity: 'face' },
                     { quality: 60, fetch_format: 'webp' },
@@ -51,5 +61,32 @@ async function subirImagen(buffer, folder = 'diagsa_empleados', publicId) {
         stream.end(buffer);
     });
 }
-
-module.exports = { cloudinary, upload, subirImagen };
+/**
+ * Sube un PDF a Cloudinary como raw.
+ */
+async function subirPDF(buffer, folder = 'diagsa_documentos', publicId) {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                resource_type: 'raw',
+                folder,
+                public_id: publicId,
+                overwrite: true,
+                use_filename: true,
+                unique_filename: false,
+            },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result.secure_url);
+            }
+        );
+        stream.end(buffer);
+    });
+}
+module.exports = {
+    cloudinary,
+    upload,
+    uploadPDF,
+    subirImagen,
+    subirPDF,
+};
