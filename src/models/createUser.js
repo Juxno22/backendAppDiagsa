@@ -177,8 +177,7 @@ async function createUser(userData) {
                 emergencia_nombre, emergencia_telefono, emergencia_parentesco,
                 domicilio_calle, domicilio_colonia, domicilio_localidad,
                 domicilio_cp, domicilio_num_ext, domicilio_num_int,
-                domicilio_municipio, domicilio_estado, razon_social, nombre_banco, codigo_postal_fiscal,
-            ) VALUES (
+                domicilio_municipio, domicilio_estado, razon_social, nombre_banco, codigo_postal_fiscal) VALUES (
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
