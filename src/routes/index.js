@@ -2296,7 +2296,7 @@ router.post('/rh/empleados/:id/vehiculos', authMiddleware, soloRH, async (req, r
 router.patch('/rh/vehiculos/:vehiculoId', authMiddleware, soloRH, async (req, res) => {
     try {
         const { vehiculoId } = req.params;
-        const { tipo, marca, modelo, anio, color, placas,  num_serie, } = req.body;
+        const { tipo, marca, modelo, anio, color, placas, num_serie, } = req.body;
         await query(`
             UPDATE vehiculos
             SET
@@ -2346,6 +2346,65 @@ router.delete('/rh/vehiculos/:vehiculoId', authMiddleware, soloRH, async (req, r
         res.status(500).json({
             success: false,
             message: error.message,
+        });
+    }
+});
+router.post('/rh/admin/usuarios/:usuarioId/accesos', authMiddleware, soloRHAdmin, async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const { accesos } = req.body;
+
+        if (!Array.isArray(accesos)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Formato de accesos inválido',
+            });
+        }
+
+        const existeUsuario = await query(
+            'SELECT usuarioId FROM usuarios WHERE usuarioId = ? LIMIT 1',
+            [usuarioId]
+        );
+
+        if (existeUsuario.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado',
+            });
+        }
+
+        await query('DELETE FROM usuario_accesos WHERE usuarioId = ?', [usuarioId]);
+
+        for (const acceso of accesos) {
+            if (!acceso.sucursalId) continue;
+
+            await query(`
+                INSERT INTO usuario_accesos (
+                    usuarioId,
+                    sucursalId,
+                    departamentoId,
+                    tipo_acceso,
+                    activo
+                )
+                VALUES (?, ?, ?, ?, 1)
+            `, [
+                Number(usuarioId),
+                Number(acceso.sucursalId),
+                acceso.departamentoId ? Number(acceso.departamentoId) : null,
+                acceso.departamentoId ? 'departamento' : 'sucursal',
+            ]);
+        }
+
+        return res.json({
+            success: true,
+            message: 'Accesos actualizados correctamente',
+        });
+    } catch (error) {
+        console.error('[POST /rh/admin/usuarios/:usuarioId/accesos]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al actualizar accesos',
         });
     }
 });
