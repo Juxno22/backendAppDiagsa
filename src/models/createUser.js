@@ -178,22 +178,18 @@ async function createUser(userData) {
                 domicilio_calle, domicilio_colonia, domicilio_localidad,
                 domicilio_cp, domicilio_num_ext, domicilio_num_int,
                 domicilio_municipio, domicilio_estado, razon_social, nombre_banco, codigo_postal_fiscal,
-                sucursalId, departamentoId
             ) VALUES (
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
-            )
-        `,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ? ) `,
             [
                 userData.nombre,
                 userData.apPaterno,

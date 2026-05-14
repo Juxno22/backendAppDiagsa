@@ -2238,4 +2238,105 @@ router.post('/rh/empleados/:id/documentos', authMiddleware, soloRH, uploadPDF.fi
         }
     }
 );
+router.post('/rh/empleados/:id/vehiculos', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tipo, marca, modelo, anio, color, placas, num_serie, } = req.body;
+        if (!tipo && !marca && !modelo && !placas && !num_serie) {
+            return res.status(400).json({
+                success: false,
+                message: 'Agrega al menos un dato del vehículo',
+            });
+        }
+        const result = await query(`
+            INSERT INTO vehiculos (
+                usuarioId,
+                tiene_vehiculo,
+                tipo,
+                marca,
+                modelo,
+                anio,
+                color,
+                placas,
+                num_serie
+            )
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            id,
+            tipo || null,
+            marca || null,
+            modelo || null,
+            anio ? Number(anio) : null,
+            color || null,
+            placas || null,
+            num_serie || null,
+        ])
+        res.status(201).json({
+            success: true,
+            message: 'Vehículo agregado correctamente',
+            vehiculoId: result.insertId,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+router.patch('/rh/vehiculos/:vehiculoId', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const { vehiculoId } = req.params;
+        const { tipo, marca, modelo, anio, color, placas,  num_serie, } = req.body;
+        await query(`
+            UPDATE vehiculos
+            SET
+                tiene_vehiculo = 1,
+                tipo = ?,
+                marca = ?,
+                modelo = ?,
+                anio = ?,
+                color = ?,
+                placas = ?,
+                num_serie = ?
+            WHERE vehiculoId = ?
+        `, [
+            tipo || null,
+            marca || null,
+            modelo || null,
+            anio ? Number(anio) : null,
+            color || null,
+            placas || null,
+            num_serie || null,
+            vehiculoId,
+        ]);
+        res.json({
+            success: true,
+            message: 'Vehículo actualizado correctamente',
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
+router.delete('/rh/vehiculos/:vehiculoId', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const { vehiculoId } = req.params;
+        await query(`
+            UPDATE vehiculos
+            SET tiene_vehiculo = 0
+            WHERE vehiculoId = ?
+        `, [vehiculoId]);
+        res.json({
+            success: true,
+            message: 'Vehículo eliminado correctamente',
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+});
 module.exports = router;

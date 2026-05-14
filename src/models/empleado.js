@@ -65,17 +65,17 @@ async function getEmpleadoById(usuarioId) {
     const diasRestantes = Math.max(0, dias - emp.dias_usados);
 
     // Cargar vehículo, hijos y descuentos
-    const [vehiculo, hijos, descuentos] = await Promise.all([
-        query('SELECT * FROM vehiculos WHERE usuarioId = ? LIMIT 1', [emp.usuarioId]),
+    const [vehiculos, hijos, descuentos] = await Promise.all([
+        query(` SELECT * FROM vehiculos WHERE usuarioId = ? AND tiene_vehiculo = 1 ORDER BY vehiculoId`, [emp.usuarioId]),
         query('SELECT * FROM hijos WHERE usuarioId = ? ORDER BY hijoId', [emp.usuarioId]),
         query('SELECT * FROM descuentos WHERE usuarioId = ? AND activo = 1 ORDER BY descuentoId', [emp.usuarioId]),
     ]);
-
     return {
         ...emp,
         dias_vacaciones_lft: dias,
         dias_restantes: diasRestantes,
-        vehiculo: vehiculo[0] || null,
+        vehiculos: vehiculos || [],
+        vehiculo: vehiculos[0] || null,
         hijos: hijos || [],
         descuentos: descuentos || [],
     };
@@ -249,7 +249,7 @@ async function getAllEmpleados(rolId, departamento) {
  */
 async function updateEmpleado(usuarioId, datosNuevos) {
     //valiiidacion de campos numericos
-    const camposNumericos = [ "sueldo_bruto", "fondo_ahorro", "sueldo_neto", "sueldo_compensacion", "sueldo_final",];
+    const camposNumericos = ["sueldo_bruto", "fondo_ahorro", "sueldo_neto", "sueldo_compensacion", "sueldo_final",];
     for (const campo of camposNumericos) {
         if (datosNuevos[campo] !== undefined && datosNuevos[campo] !== null && datosNuevos[campo] !== '') {
             const numero = Number(datosNuevos[campo]);
