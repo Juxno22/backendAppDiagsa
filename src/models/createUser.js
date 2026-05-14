@@ -154,15 +154,21 @@ async function createUser(userData) {
             ? Math.round(sueldoBruto * 0.05 * 100) / 100
             : null;
         const sueldoNeto = sueldoBruto
-            ? Math.round(sueldoBruto * 0.95 * 100) / 100
+            ? Math.round((sueldoBruto - fondoAhorro) * 100) / 100
             : null;
+        const sueldoCompensacion = userData.sueldo_compensacion
+            ? Number(userData.sueldo_compensacion)
+            : 0;
+        const sueldoFinal = sueldoNeto !== null
+            ? Math.round((sueldoNeto + sueldoCompensacion) * 100) / 100
+            : sueldoCompensacion;
         const result = await query(
             `
             INSERT INTO usuarios (
                 nombre, apPaterno, apMaterno, usuario, contrasenia,
                 puestoId, tipoId, rolId, sucursalId, departamentoId,
                 fechaContratacion, departamento, jefe_inmediato,
-                sueldo, sueldo_bruto, fondo_ahorro, sueldo_neto,
+                sueldo, sueldo_bruto, fondo_ahorro, sueldo_neto, sueldo_compensacion, sueldo_final,
                 genero, estado_civil, numero_seguro_social, RFC,
                 fecha_nacimiento, curp, celular, es_padre_madre,
                 fecha_contrato_indeterminado_3m,
@@ -183,8 +189,8 @@ async function createUser(userData) {
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
             )
         `,
@@ -204,6 +210,8 @@ async function createUser(userData) {
                 sueldoBruto,
                 fondoAhorro,
                 sueldoNeto,
+                sueldoCompensacion,
+                sueldoFinal,
                 userData.genero || null,
                 userData.estado_civil || null,
                 userData.numero_seguro_social || null,

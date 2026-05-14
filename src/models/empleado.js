@@ -22,6 +22,7 @@ async function getEmpleadoById(usuarioId) {
             p.nombre_puesto, t.nombre_tipo,
             r.nombre_rol, u.puestoId, u.tipoId, u.rolId,
             u.foto, u.sueldo, u.sueldo_bruto, u.fondo_ahorro, u.sueldo_neto,
+            u.sueldo_compensacion, u.sueldo_final,  
             -- Personales
             u.genero, u.estado_civil, u.numero_seguro_social,
             u.RFC, u.fecha_nacimiento, u.curp, u.celular,
@@ -197,7 +198,9 @@ async function getAllEmpleadosPorAcceso(req) {
             u.foto,
             u.sueldo,
             u.fechaContratacion,
-            u.sueldo_neto
+            u.sueldo_neto,
+            u.sueldo_compensacion,
+            u.sueldo_final
         FROM usuarios u
         LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
         LEFT JOIN puesto p ON u.puestoId = p.puestoId
@@ -246,12 +249,7 @@ async function getAllEmpleados(rolId, departamento) {
  */
 async function updateEmpleado(usuarioId, datosNuevos) {
     //valiiidacion de campos numericos
-    const camposNumericos = [
-        'sueldo',
-        'sueldo_bruto',
-        'sueldo_neto',
-        'fondo_ahorro'
-    ];
+    const camposNumericos = [ "sueldo_bruto", "fondo_ahorro", "sueldo_neto", "sueldo_compensacion", "sueldo_final",];
     for (const campo of camposNumericos) {
         if (datosNuevos[campo] !== undefined && datosNuevos[campo] !== null && datosNuevos[campo] !== '') {
             const numero = Number(datosNuevos[campo]);
