@@ -2349,4 +2349,15 @@ router.delete('/rh/vehiculos/:vehiculoId', authMiddleware, soloRH, async (req, r
         });
     }
 });
+router.get('/debug/version', (req, res) => {
+    res.json({
+        success: true,
+        version: 'debug-accesos-2026-05-14-01',
+        rutas: {
+            postAccesos: '/rh/admin/usuarios/:usuarioId/accesos',
+            mountedAt: '/api',
+        },
+        fecha: new Date().toISOString(),
+    });
+});
 module.exports = router;
