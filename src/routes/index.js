@@ -359,7 +359,7 @@ router.post("/createuser", authMiddleware, async (req, res) => {
         } else {
             res.status(400).json(result);
         }
-    } catch (eror) {
+    } catch (error) {
         console.error("Error en la ruta", error);
         res.status(500).json({
             success: false,
@@ -2425,4 +2425,28 @@ router.get('/debug/routes', (req, res) => {
         routes,
     });
 });;
+router.patch('/usuarios/induccion/completar', authMiddleware, async (req, res) => {
+    try {
+        const usuarioId = req.user.usuarioId;
+
+        await query(`
+            UPDATE usuarios
+            SET induccion_completada = 1,
+                fecha_induccion = NOW()
+            WHERE usuarioId = ?
+        `, [usuarioId]);
+
+        return res.json({
+            success: true,
+            message: 'Inducción completada correctamente',
+        });
+    } catch (error) {
+        console.error('[PATCH /usuarios/induccion/completar]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al completar inducción',
+        });
+    }
+});
 module.exports = router;

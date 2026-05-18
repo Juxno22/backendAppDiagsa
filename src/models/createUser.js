@@ -345,6 +345,8 @@ async function loginUser(usuario, contrasenia) {
                 sucursalId: user.sucursalId || null,
                 departamentoId: user.departamentoId || null,
                 departamento: user.departamento || null,
+                induccion_completada: Number(user.induccion_completada || 0),
+                fecha_induccion: user.fecha_induccion || null,
             },
         };
     } catch (error) {
