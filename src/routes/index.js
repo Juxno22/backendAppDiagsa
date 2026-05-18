@@ -1354,7 +1354,7 @@ router.get(
         }
     },
 );
-outer.post('/rh/notificaciones/generar-pendientes', authMiddleware, async (req, res) => {
+router.post('/rh/notificaciones/generar-pendientes', authMiddleware, async (req, res) => {
     try {
         const enviarPush = req.body?.enviarPush === true;
 
