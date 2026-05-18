@@ -1249,39 +1249,90 @@ router.get("/evaluaciones/:id/word", authMiddleware, async (req, res) => {
     }
 });
 // GET /api/rh/notificaciones — lista notificaciones pendientes
-router.get("/rh/notificaciones", authMiddleware, async (req, res) => {
+router.get('/rh/notificaciones', authMiddleware, async (req, res) => {
     try {
-        const soloNoLeidas = req.query.noLeidas === "true";
-        const notificaciones = await getNotificacionesRH(soloNoLeidas);
-        res.json({ success: true, data: notificaciones });
+        const soloNoLeidas = req.query.noLeidas === 'true';
+        const generar = req.query.generar !== 'false';
+
+        const notificaciones = await getNotificacionesRH(soloNoLeidas, {
+            generar,
+        });
+
+        return res.json({
+            success: true,
+            data: notificaciones,
+            total: notificaciones.length,
+        });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error('[GET /rh/notificaciones]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener notificaciones RH',
+        });
     }
 });
 
 // GET /api/rh/notificaciones/count — badge contador
-router.get("/rh/notificaciones/count", authMiddleware, async (req, res) => {
+router.get('/rh/notificaciones/count', authMiddleware, async (req, res) => {
     try {
+        // Genera pendientes antes de contar.
+        await generarNotificacionesPendientesRH({ enviarPush: false });
+
         const total = await contarNoLeidas();
-        res.json({ success: true, data: { total } });
+
+        return res.json({
+            success: true,
+            data: { total },
+        });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error('[GET /rh/notificaciones/count]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al contar notificaciones RH',
+        });
+    }
+});
+router.patch('/rh/notificaciones/leer-todas', authMiddleware, async (req, res) => {
+    try {
+        const result = await marcarTodasComoLeidas();
+
+        return res.json(result);
+    } catch (error) {
+        console.error('[PATCH /rh/notificaciones/leer-todas]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al marcar todas como leídas',
+        });
     }
 });
 
 // PATCH /api/rh/notificaciones/:id/leer — marcar como leída
-router.patch(
-    "/rh/notificaciones/:id/leer",
-    authMiddleware,
-    async (req, res) => {
-        try {
-            await marcarComoLeida(Number(req.params.id));
-            res.json({ success: true });
-        } catch (error) {
-            res.status(500).json({ success: false, message: error.message });
+router.patch('/rh/notificaciones/:id/leer', authMiddleware, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID inválido',
+            });
         }
-    },
-);
+
+        const result = await marcarComoLeida(id);
+
+        return res.json(result);
+    } catch (error) {
+        console.error('[PATCH /rh/notificaciones/:id/leer]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al marcar notificación como leída',
+        });
+    }
+});;
 router.get("/departamentos", async (req, res) => {
     try {
         const departamentos = await getDepartamentos();
@@ -1303,6 +1354,24 @@ router.get(
         }
     },
 );
+outer.post('/rh/notificaciones/generar-pendientes', authMiddleware, async (req, res) => {
+    try {
+        const enviarPush = req.body?.enviarPush === true;
+
+        const result = await generarNotificacionesPendientesRH({
+            enviarPush,
+        });
+
+        return res.json(result);
+    } catch (error) {
+        console.error('[POST /rh/notificaciones/generar-pendientes]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al generar notificaciones RH',
+        });
+    }
+});
 // GET /api/rh/cumpleanos — cumpleaños del mes actual agrupados por día
 router.get("/rh/cumpleanos", authMiddleware, async (req, res) => {
     try {
