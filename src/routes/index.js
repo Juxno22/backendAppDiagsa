@@ -88,6 +88,13 @@ const {
     gestionarVacanteRH,
     deleteVacante,
 } = require('../models/vacantes');
+const {
+    VAPID_PUBLIC_KEY,
+    guardarSuscripcionPush,
+    enviarPushAUsuario,
+    enviarPushARol,
+    getPushLogs,
+} = require('../models/pushNotifications');
 const query = (sql, values = []) =>
     new Promise((resolve, reject) => {
         connection.query(sql, values, (err, results) => {
@@ -2449,4 +2456,146 @@ router.patch('/usuarios/induccion/completar', authMiddleware, async (req, res) =
         });
     }
 });
+router.get('/push/vapid-public-key', authMiddleware, async (req, res) => {
+    try {
+        if (!VAPID_PUBLIC_KEY) {
+            return res.status(500).json({
+                success: false,
+                message: 'Falta VAPID_PUBLIC_KEY en variables de entorno',
+            });
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                publicKey: VAPID_PUBLIC_KEY,
+            },
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener llave pública VAPID',
+        });
+    }
+});
+
+router.post('/push/subscribe', authMiddleware, async (req, res) => {
+    try {
+        const usuarioId = req.user.usuarioId;
+        const { subscription } = req.body;
+
+        const result = await guardarSuscripcionPush(
+            usuarioId,
+            subscription,
+            req.headers['user-agent'] || null
+        );
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error('[POST /push/subscribe]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al guardar suscripción push',
+        });
+    }
+});
+
+router.post('/push/test', authMiddleware, async (req, res) => {
+    try {
+        const usuarioId = req.user.usuarioId;
+
+        const result = await enviarPushAUsuario(usuarioId, {
+            titulo: req.body?.titulo || 'Notificación de prueba',
+            mensaje: req.body?.mensaje || 'Las notificaciones push están funcionando correctamente.',
+            url: req.body?.url || '/',
+        });
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error('[POST /push/test]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al enviar notificación de prueba',
+        });
+    }
+});
+
+router.post('/push/usuario/:usuarioId', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const { titulo, mensaje, url } = req.body;
+
+        if (!titulo || !mensaje) {
+            return res.status(400).json({
+                success: false,
+                message: 'titulo y mensaje son requeridos',
+            });
+        }
+
+        const result = await enviarPushAUsuario(Number(usuarioId), {
+            titulo,
+            mensaje,
+            url: url || '/',
+        });
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error('[POST /push/usuario/:usuarioId]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al enviar notificación',
+        });
+    }
+});
+
+router.post('/push/rol/:rolId', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const { rolId } = req.params;
+        const { titulo, mensaje, url } = req.body;
+
+        if (!titulo || !mensaje) {
+            return res.status(400).json({
+                success: false,
+                message: 'titulo y mensaje son requeridos',
+            });
+        }
+
+        const result = await enviarPushARol(Number(rolId), {
+            titulo,
+            mensaje,
+            url: url || '/',
+        });
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error('[POST /push/rol/:rolId]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al enviar notificaciones por rol',
+        });
+    }
+});
+
+router.get('/push/logs', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const logs = await getPushLogs(null, req.query.limit || 50);
+
+        return res.json({
+            success: true,
+            data: logs,
+        });
+    } catch (error) {
+        console.error('[GET /push/logs]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener logs push',
+        });
+    }
+});
+
 module.exports = router;
