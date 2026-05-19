@@ -420,13 +420,19 @@ async function generarNotificacionesPendientesRH({ usuarioId = null, enviarPush 
  * Si generar=true, primero crea pendientes nuevas.
  */
 async function getNotificacionesRH(soloNoLeidas = false, opciones = {}) {
-    const { generar = true } = opciones;
+    const { generar = true, lectorUsuarioId = null } = opciones;
+
+    if (!lectorUsuarioId) {
+        throw new Error('Falta lectorUsuarioId para consultar notificaciones RH');
+    }
 
     if (generar) {
         await generarNotificacionesPendientesRH({ enviarPush: false });
     }
 
-    const whereLeida = soloNoLeidas ? 'AND n.leida = 0' : '';
+    const whereLeida = soloNoLeidas
+        ? 'AND COALESCE(nul.leida, 0) = 0'
+        : '';
 
     return query(
         `
@@ -454,7 +460,8 @@ async function getNotificacionesRH(soloNoLeidas = false, opciones = {}) {
             n.fecha_evento,
             n.fecha_evaluacion,
             n.fecha_notificar,
-            n.leida,
+            COALESCE(nul.leida, 0) AS leida,
+            nul.leidaAt,
             n.createdAt,
             u.nombre,
             u.apPaterno,
@@ -462,39 +469,91 @@ async function getNotificacionesRH(soloNoLeidas = false, opciones = {}) {
             u.usuario,
             p.nombre_puesto
         FROM notificaciones_rh n
+        LEFT JOIN notificaciones_rh_lecturas nul
+          ON nul.notificacionId = n.notificacionId
+         AND nul.usuarioId = ?
         LEFT JOIN usuarios u ON n.usuarioId = u.usuarioId
         LEFT JOIN puesto p ON u.puestoId = p.puestoId
         WHERE n.fecha_notificar <= CURDATE()
           ${whereLeida}
         ORDER BY
-            n.leida ASC,
+            COALESCE(nul.leida, 0) ASC,
             FIELD(COALESCE(n.prioridad, 'media'), 'alta', 'media', 'baja'),
             n.createdAt DESC
-        `
+        `,
+        [lectorUsuarioId]
     );
 }
 
-async function marcarComoLeida(notificacionId) {
+
+async function marcarComoLeida(notificacionId, lectorUsuarioId) {
+    if (!notificacionId) {
+        return {
+            success: false,
+            message: 'Falta notificacionId',
+        };
+    }
+
+    if (!lectorUsuarioId) {
+        return {
+            success: false,
+            message: 'Falta usuario autenticado',
+        };
+    }
+
     await query(
         `
-        UPDATE notificaciones_rh
-        SET leida = 1
-        WHERE notificacionId = ?
+        INSERT INTO notificaciones_rh_lecturas (
+            notificacionId,
+            usuarioId,
+            leida,
+            leidaAt
+        )
+        VALUES (?, ?, 1, NOW())
+        ON DUPLICATE KEY UPDATE
+            leida = 1,
+            leidaAt = NOW(),
+            updatedAt = CURRENT_TIMESTAMP
         `,
-        [notificacionId]
+        [notificacionId, lectorUsuarioId]
     );
 
     return { success: true };
 }
 
-async function marcarTodasComoLeidas() {
+async function marcarTodasComoLeidas(lectorUsuarioId) {
+    if (!lectorUsuarioId) {
+        return {
+            success: false,
+            message: 'Falta usuario autenticado',
+        };
+    }
+
     await query(
         `
-        UPDATE notificaciones_rh
-        SET leida = 1
-        WHERE leida = 0
-          AND fecha_notificar <= CURDATE()
-        `
+        INSERT INTO notificaciones_rh_lecturas (
+            notificacionId,
+            usuarioId,
+            leida,
+            leidaAt
+        )
+        SELECT
+            n.notificacionId,
+            ? AS usuarioId,
+            1 AS leida,
+            NOW() AS leidaAt
+        FROM notificaciones_rh n
+        LEFT JOIN notificaciones_rh_lecturas nul
+          ON nul.notificacionId = n.notificacionId
+         AND nul.usuarioId = ?
+        WHERE n.fecha_notificar <= CURDATE()
+          AND COALESCE(nul.leida, 0) = 0
+        ON DUPLICATE KEY UPDATE
+            leida = 1,
+            leidaAt = NOW(),
+            updatedAt = CURRENT_TIMESTAMP
+        `,
+        [lectorUsuarioId, lectorUsuarioId]
     );
 
     return {
@@ -503,14 +562,22 @@ async function marcarTodasComoLeidas() {
     };
 }
 
-async function contarNoLeidas() {
+async function contarNoLeidas(lectorUsuarioId) {
+    if (!lectorUsuarioId) {
+        return 0;
+    }
+
     const result = await query(
         `
         SELECT COUNT(*) AS total
-        FROM notificaciones_rh
-        WHERE leida = 0
-          AND fecha_notificar <= CURDATE()
-        `
+        FROM notificaciones_rh n
+        LEFT JOIN notificaciones_rh_lecturas nul
+          ON nul.notificacionId = n.notificacionId
+         AND nul.usuarioId = ?
+        WHERE n.fecha_notificar <= CURDATE()
+          AND COALESCE(nul.leida, 0) = 0
+        `,
+        [lectorUsuarioId]
     );
 
     return result[0]?.total || 0;

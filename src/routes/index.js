@@ -21,8 +21,10 @@ const {
 } = require('../models/permisos');
 const {
     generarNotificaciones,
+    generarNotificacionesPendientesRH,
     getNotificacionesRH,
     marcarComoLeida,
+    marcarTodasComoLeidas,
     contarNoLeidas,
 } = require("../models/notificacionesRH");
 const {
@@ -1248,14 +1250,23 @@ router.get("/evaluaciones/:id/word", authMiddleware, async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 });
-// GET /api/rh/notificaciones — lista notificaciones pendientes
-router.get('/rh/notificaciones', authMiddleware, async (req, res) => {
+// GET /api/rh/notificaciones — lista notificaciones pendientes por usuario RH
+router.get('/rh/notificaciones', authMiddleware, soloRH, async (req, res) => {
     try {
+        const lectorUsuarioId = req.user?.usuarioId;
         const soloNoLeidas = req.query.noLeidas === 'true';
         const generar = req.query.generar !== 'false';
 
+        if (!lectorUsuarioId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Usuario autenticado no válido',
+            });
+        }
+
         const notificaciones = await getNotificacionesRH(soloNoLeidas, {
             generar,
+            lectorUsuarioId,
         });
 
         return res.json({
@@ -1273,13 +1284,21 @@ router.get('/rh/notificaciones', authMiddleware, async (req, res) => {
     }
 });
 
-// GET /api/rh/notificaciones/count — badge contador
-router.get('/rh/notificaciones/count', authMiddleware, async (req, res) => {
+/// GET /api/rh/notificaciones/count — badge contador por usuario RH
+router.get('/rh/notificaciones/count', authMiddleware, soloRH, async (req, res) => {
     try {
-        // Genera pendientes antes de contar.
+        const lectorUsuarioId = req.user?.usuarioId;
+
+        if (!lectorUsuarioId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Usuario autenticado no válido',
+            });
+        }
+
         await generarNotificacionesPendientesRH({ enviarPush: false });
 
-        const total = await contarNoLeidas();
+        const total = await contarNoLeidas(lectorUsuarioId);
 
         return res.json({
             success: true,
@@ -1294,9 +1313,19 @@ router.get('/rh/notificaciones/count', authMiddleware, async (req, res) => {
         });
     }
 });
-router.patch('/rh/notificaciones/leer-todas', authMiddleware, async (req, res) => {
+// PATCH /api/rh/notificaciones/leer-todas — se conserva para uso futuro, pero por usuario RH
+router.patch('/rh/notificaciones/leer-todas', authMiddleware, soloRH, async (req, res) => {
     try {
-        const result = await marcarTodasComoLeidas();
+        const lectorUsuarioId = req.user?.usuarioId;
+
+        if (!lectorUsuarioId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Usuario autenticado no válido',
+            });
+        }
+
+        const result = await marcarTodasComoLeidas(lectorUsuarioId);
 
         return res.json(result);
     } catch (error) {
@@ -1309,10 +1338,18 @@ router.patch('/rh/notificaciones/leer-todas', authMiddleware, async (req, res) =
     }
 });
 
-// PATCH /api/rh/notificaciones/:id/leer — marcar como leída
-router.patch('/rh/notificaciones/:id/leer', authMiddleware, async (req, res) => {
+// PATCH /api/rh/notificaciones/:id/leer — marcar una notificación como leída solo para este usuario RH
+router.patch('/rh/notificaciones/:id/leer', authMiddleware, soloRH, async (req, res) => {
     try {
+        const lectorUsuarioId = req.user?.usuarioId;
         const id = Number(req.params.id);
+
+        if (!lectorUsuarioId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Usuario autenticado no válido',
+            });
+        }
 
         if (!id) {
             return res.status(400).json({
@@ -1321,7 +1358,7 @@ router.patch('/rh/notificaciones/:id/leer', authMiddleware, async (req, res) => 
             });
         }
 
-        const result = await marcarComoLeida(id);
+        const result = await marcarComoLeida(id, lectorUsuarioId);
 
         return res.json(result);
     } catch (error) {
@@ -1332,7 +1369,8 @@ router.patch('/rh/notificaciones/:id/leer', authMiddleware, async (req, res) => 
             message: error.message || 'Error al marcar notificación como leída',
         });
     }
-});;
+});
+
 router.get("/departamentos", async (req, res) => {
     try {
         const departamentos = await getDepartamentos();
@@ -1342,19 +1380,21 @@ router.get("/departamentos", async (req, res) => {
     }
 });
 // GET /api/rh/notificaciones/generar-todos — solo para inicializar
-router.get(
-    "/rh/notificaciones/generar-todos",
-    authMiddleware,
-    async (req, res) => {
-        try {
-            const result = await generarNotificaciones();
-            res.json(result);
-        } catch (error) {
-            res.status(500).json({ success: false, message: error.message });
-        }
-    },
-);
-router.post('/rh/notificaciones/generar-pendientes', authMiddleware, async (req, res) => {
+router.get('/rh/notificaciones/generar-todos', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const result = await generarNotificaciones();
+        return res.json(result);
+    } catch (error) {
+        console.error('[GET /rh/notificaciones/generar-todos]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al generar notificaciones',
+        });
+    }
+});
+// POST /api/rh/notificaciones/generar-pendientes
+router.post('/rh/notificaciones/generar-pendientes', authMiddleware, soloRH, async (req, res) => {
     try {
         const enviarPush = req.body?.enviarPush === true;
 
