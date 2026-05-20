@@ -97,6 +97,13 @@ const {
     enviarPushARol,
     getPushLogs,
 } = require('../models/pushNotifications');
+const {
+    crearDescuentoPrestamo,
+    getDescuentosByUsuario,
+    procesarPagosDeducciones,
+    liquidarDescuento,
+    cancelarDescuento,
+} = require('../models/descuentos');
 const query = (sql, values = []) =>
     new Promise((resolve, reject) => {
         connection.query(sql, values, (err, results) => {
@@ -2724,6 +2731,118 @@ router.get('/push/logs', authMiddleware, soloRH, async (req, res) => {
         return res.status(500).json({
             success: false,
             message: error.message || 'Error al obtener logs push',
+        });
+    }
+});
+// Crear una o varias deducciones/préstamos
+router.post('/rh/empleados/:usuarioId/descuentos', authMiddleware, async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const { descuentos = [] } = req.body || {};
+
+        if (!Array.isArray(descuentos) || descuentos.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Agrega al menos una deducción válida',
+            });
+        }
+
+        const resultados = [];
+
+        for (const d of descuentos) {
+            const result = await crearDescuentoPrestamo(Number(usuarioId), d);
+
+            if (!result.success) {
+                return res.status(400).json(result);
+            }
+
+            resultados.push(result);
+        }
+
+        return res.json({
+            success: true,
+            message: 'Deducciones registradas correctamente',
+            data: resultados,
+        });
+    } catch (error) {
+        console.error('[POST /rh/empleados/:usuarioId/descuentos]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al guardar deducciones',
+        });
+    }
+});
+// Consultar deducciones de un empleado
+router.get('/rh/empleados/:usuarioId/descuentos', authMiddleware, async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const incluirInactivos = req.query.incluirInactivos === 'true';
+
+        const data = await getDescuentosByUsuario(Number(usuarioId), incluirInactivos);
+
+        return res.json({
+            success: true,
+            data,
+        });
+    } catch (error) {
+        console.error('[GET /rh/empleados/:usuarioId/descuentos]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener deducciones',
+        });
+    }
+});
+// Procesar pagos vencidos. Puede ejecutarse manual o por cron externo.
+router.post('/rh/descuentos/procesar-pagos', authMiddleware, async (req, res) => {
+    try {
+        const fechaProceso = req.body?.fechaProceso || undefined;
+        const result = await procesarPagosDeducciones(fechaProceso);
+
+        return res.json(result);
+    } catch (error) {
+        console.error('[POST /rh/descuentos/procesar-pagos]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al procesar pagos',
+        });
+    }
+});
+// Liquidar anticipadamente. Úsalo cuando el colaborador pagó lo faltante.
+router.delete('/rh/descuentos/:descuentoId', authMiddleware, async (req, res) => {
+    try {
+        const { descuentoId } = req.params;
+        const observaciones = req.body?.observaciones || 'Liquidado anticipadamente';
+
+        const result = await liquidarDescuento(Number(descuentoId), observaciones);
+
+        return res.status(result.success ? 200 : 404).json(result);
+    } catch (error) {
+        console.error('[DELETE /rh/descuentos/:descuentoId]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al liquidar deducción',
+        });
+    }
+});
+// Cancelar sin registrar liquidación, por error de captura.
+router.patch('/rh/descuentos/:descuentoId/cancelar', authMiddleware, async (req, res) => {
+    try {
+        const { descuentoId } = req.params;
+        const observaciones = req.body?.observaciones || 'Cancelado por RH';
+
+        const result = await cancelarDescuento(Number(descuentoId), observaciones);
+
+        return res.status(result.success ? 200 : 404).json(result);
+    } catch (error) {
+        console.error('[PATCH /rh/descuentos/:descuentoId/cancelar]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al cancelar deducción',
         });
     }
 });

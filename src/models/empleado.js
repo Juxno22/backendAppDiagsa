@@ -1,5 +1,6 @@
 const connection = require("../config/connection");
 const { construirFiltroAccesoUsuarios } = require('../utils/accesos');
+const { getDescuentosByUsuario } = require('./descuentos');
 //Operaciones del empleado
 const query = (sql, values = []) => {
     return new Promise((resolve, reject) => {
@@ -83,13 +84,7 @@ async function getEmpleadoById(usuarioId) {
             WHERE usuarioId = ?
             ORDER BY hijoId
         `, [emp.usuarioId]),
-        query(`
-            SELECT *
-            FROM descuentos
-            WHERE usuarioId = ?
-              AND activo = 1
-            ORDER BY descuentoId
-        `, [emp.usuarioId]),
+        getDescuentosByUsuario(emp.usuarioId, false)
     ]);
     console.log('[getEmpleadoById] despues queries extra');
     return {
