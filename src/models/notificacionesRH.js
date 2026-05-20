@@ -314,12 +314,16 @@ async function generarNotificacionesCumpleanosPorDia({
             u.departamento,
             u.sucursalId,
             u.departamentoId,
+            s.nombre AS nombre_sucursal,
+            d.nombre AS nombre_departamento,
             TIMESTAMPDIFF(
                 YEAR,
                 u.fecha_nacimiento,
                 DATE_ADD(CURDATE(), INTERVAL ? DAY)
             ) AS edad
         FROM usuarios u
+        LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
+        LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
         WHERE DAY(u.fecha_nacimiento) = DAY(DATE_ADD(CURDATE(), INTERVAL ? DAY))
           AND MONTH(u.fecha_nacimiento) = MONTH(DATE_ADD(CURDATE(), INTERVAL ? DAY))
           AND u.fecha_nacimiento IS NOT NULL
@@ -332,14 +336,27 @@ async function generarNotificacionesCumpleanosPorDia({
     for (const emp of cumpleanos) {
         const nombreCompleto = `${emp.nombre || ''} ${emp.apPaterno || ''} ${emp.apMaterno || ''}`.trim();
 
+        const departamento =
+            emp.nombre_departamento ||
+            emp.departamento ||
+            'SIN DEPARTAMENTO';
+
+        const sucursal =
+            emp.nombre_sucursal ||
+            'SIN SUCURSAL';
+
+        const infoExtra = `Departamento: ${departamento} · Sucursal: ${sucursal}`;
+
+        const mensaje =
+            dias === 0
+                ? `Hoy cumple años ${nombreCompleto}${emp.edad ? ` (${emp.edad} años)` : ''}. ${infoExtra}.`
+                : `Mañana cumple años ${nombreCompleto}${emp.edad ? ` (${emp.edad} años)` : ''}. ${infoExtra}.`;
+
         const result = await crearNotificacionRH({
             usuarioId: emp.usuarioId,
             tipo,
             titulo,
-            mensaje:
-                dias === 0
-                    ? `Hoy cumple años ${nombreCompleto}${emp.edad ? ` (${emp.edad} años)` : ''}.`
-                    : `Mañana cumple años ${nombreCompleto}${emp.edad ? ` (${emp.edad} años)` : ''}.`,
+            mensaje,
             url: '/rh/cumpleanos',
             prioridad: dias === 0 ? 'media' : 'baja',
             origen_tabla: 'usuarios',
