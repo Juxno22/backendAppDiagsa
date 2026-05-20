@@ -452,6 +452,69 @@ async function generarNotificacionesPermisosPendientes({ enviarPush = false } = 
     };
 }
 
+
+async function generarNotificacionesVacantesPendientes({ enviarPush = false } = {}) {
+    const vacantes = await query(
+        `
+        SELECT
+            v.vacanteId,
+            v.solicitanteId,
+            v.departamento,
+            v.puesto,
+            v.num_plazas,
+            v.motivo,
+            v.prioridad,
+            v.fecha_requerida,
+            v.estado,
+            v.createdAt,
+            u.nombre,
+            u.apPaterno,
+            u.apMaterno,
+            u.usuario,
+            u.departamento AS dep_solicitante,
+            u.sucursalId,
+            u.departamentoId
+        FROM vacantes v
+        LEFT JOIN usuarios u ON v.solicitanteId = u.usuarioId
+        WHERE v.estado IS NULL
+           OR v.estado = ''
+           OR LOWER(v.estado) = 'pendiente'
+        `
+    );
+
+    let creadas = 0;
+
+    for (const vacante of vacantes) {
+        const nombreSolicitante = `${vacante.nombre || ''} ${vacante.apPaterno || ''} ${vacante.apMaterno || ''}`.trim();
+        const puesto = vacante.puesto || 'SIN PUESTO';
+        const departamento = vacante.departamento || vacante.dep_solicitante || 'SIN DEPARTAMENTO';
+        const plazas = Number(vacante.num_plazas || 1);
+
+        const result = await crearNotificacionRH({
+            usuarioId: vacante.solicitanteId || null,
+            tipo: 'solicitud_vacante',
+            titulo: 'Nueva solicitud de vacante',
+            mensaje: `${nombreSolicitante || 'Un usuario'} solicitó ${plazas} vacante${plazas !== 1 ? 's' : ''} para ${puesto}. Departamento: ${departamento}.`,
+            url: '/rh/vacantes',
+            prioridad: vacante.prioridad === 'alta' ? 'alta' : 'media',
+            origen_tabla: 'vacantes',
+            origen_id: vacante.vacanteId,
+            fecha_evento: vacante.fecha_requerida || vacante.createdAt || new Date(),
+            fecha_notificar: fechaSQL(new Date()),
+            enviarPush,
+        });
+
+        if (result.success && !result.duplicated) creadas += 1;
+    }
+
+    return {
+        success: true,
+        message: 'Notificaciones de vacantes procesadas',
+        creadas,
+        total: vacantes.length,
+    };
+}
+
 /**
  * Genera todas las notificaciones pendientes que RH debe revisar.
  * Puedes llamarla:
@@ -476,6 +539,7 @@ async function generarNotificacionesPendientesRH({ usuarioId = null, enviarPush 
 
     resultados.push(await generarNotificacionesVacacionesPendientes({ enviarPush }));
     resultados.push(await generarNotificacionesPermisosPendientes({ enviarPush }));
+    resultados.push(await generarNotificacionesVacantesPendientes({ enviarPush }));
 
     const totalCreadas = resultados.reduce((sum, r) => sum + Number(r.creadas || 0), 0);
 
@@ -517,9 +581,11 @@ async function getNotificacionesRH(soloNoLeidas = false, opciones = {}) {
                     WHEN 'evaluacion_1mes' THEN 'Evaluación 1er mes'
                     WHEN 'evaluacion_2mes' THEN 'Evaluación 2do mes'
                     WHEN 'evaluacion_3mes' THEN 'Evaluación 3er mes'
+                    WHEN 'cumpleanos_hoy' THEN 'Cumpleaños hoy'
                     WHEN 'cumpleanos_manana' THEN 'Cumpleaños mañana'
                     WHEN 'solicitud_vacaciones' THEN 'Solicitud de vacaciones'
                     WHEN 'solicitud_permiso' THEN 'Solicitud de permiso'
+                    WHEN 'solicitud_vacante' THEN 'Solicitud de vacante'
                     ELSE 'Notificación RH'
                 END
             ) AS titulo,
@@ -663,6 +729,7 @@ module.exports = {
     generarNotificacionesCumpleanosPorDia,
     generarNotificacionesVacacionesPendientes,
     generarNotificacionesPermisosPendientes,
+    generarNotificacionesVacantesPendientes,
     getNotificacionesRH,
     marcarComoLeida,
     marcarTodasComoLeidas,

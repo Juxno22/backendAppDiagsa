@@ -25,6 +25,26 @@ async function solicitarVacante(solicitanteId, datos) {
         prioridad || 'media', fecha_requerida || null,
     ]);
 
+    try {
+        const { crearNotificacionRH } = require('./notificacionesRH');
+
+        await crearNotificacionRH({
+            usuarioId: solicitanteId,
+            tipo: 'solicitud_vacante',
+            titulo: 'Nueva solicitud de vacante',
+            mensaje: `Se solicitó ${num_plazas || 1} vacante${Number(num_plazas || 1) !== 1 ? 's' : ''} para ${puesto}. Departamento: ${departamento}.`,
+            url: '/rh/vacantes',
+            prioridad: prioridad === 'alta' ? 'alta' : 'media',
+            origen_tabla: 'vacantes',
+            origen_id: result.insertId,
+            fecha_evento: fecha_requerida || new Date(),
+            fecha_notificar: new Date().toISOString().split('T')[0],
+            enviarPush: false,
+        });
+    } catch (error) {
+        console.error('[solicitarVacante] No se pudo crear notificación RH:', error.message);
+    }
+
     return { success: true, vacanteId: result.insertId };
 }
 
