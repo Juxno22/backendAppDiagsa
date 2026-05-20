@@ -1258,22 +1258,16 @@ router.get("/evaluaciones/:id/word", authMiddleware, async (req, res) => {
     }
 });
 // GET /api/rh/notificaciones — lista notificaciones pendientes por usuario RH
-router.get('/rh/notificaciones', authMiddleware, soloRH, async (req, res) => {
+router.get('/rh/notificaciones', authMiddleware, async (req, res) => {
     try {
-        const lectorUsuarioId = req.user?.usuarioId;
         const soloNoLeidas = req.query.noLeidas === 'true';
-        const generar = req.query.generar !== 'false';
 
-        if (!lectorUsuarioId) {
-            return res.status(401).json({
-                success: false,
-                message: 'Usuario autenticado no válido',
-            });
-        }
+        await generarNotificacionesPendientesRH({
+            enviarPush: false,
+        });
 
         const notificaciones = await getNotificacionesRH(soloNoLeidas, {
-            generar,
-            lectorUsuarioId,
+            generar: false,
         });
 
         return res.json({

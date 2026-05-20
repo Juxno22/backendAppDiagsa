@@ -30,6 +30,16 @@ function fechaSQL(fecha) {
 
     return d.toISOString().split('T')[0];
 }
+function fechaEventoPorDias(dias = 0) {
+    const fecha = new Date();
+    fecha.setDate(fecha.getDate() + dias);
+
+    const y = fecha.getFullYear();
+    const m = String(fecha.getMonth() + 1).padStart(2, '0');
+    const d = String(fecha.getDate()).padStart(2, '0');
+
+    return `${y}-${m}-${d}`;
+}
 
 function sumarMeses(fechaBase, meses) {
     const fecha = new Date(fechaBase);
@@ -94,20 +104,30 @@ async function crearNotificacionRH({
     if (origen_tabla && origen_id) {
         const existe = await query(
             `
-            SELECT notificacionId
-            FROM notificaciones_rh
-            WHERE tipo = ?
-              AND origen_tabla = ?
-              AND origen_id = ?
-            LIMIT 1
-            `,
-            [tipo, origen_tabla, origen_id]
+        SELECT notificacionId
+        FROM notificaciones_rh
+        WHERE tipo = ?
+          AND origen_tabla = ?
+          AND origen_id = ?
+          AND (
+                (? IS NULL AND fecha_evento IS NULL)
+                OR DATE(fecha_evento) = DATE(?)
+              )
+        LIMIT 1
+        `,
+            [
+                tipo,
+                origen_tabla,
+                origen_id,
+                fechaEventoFinal,
+                fechaEventoFinal,
+            ]
         );
 
         if (existe.length > 0) {
             return {
                 success: true,
-                message: 'La notificación ya existía',
+                message: 'La notificación ya existía para esta fecha',
                 notificacionId: existe[0].notificacionId,
                 duplicated: true,
             };
@@ -278,10 +298,10 @@ async function generarNotificacionesCumpleanosManana({ enviarPush = false } = {}
 async function generarNotificacionesCumpleanosPorDia({
     dias = 1,
     enviarPush = false,
-    usuarioSolicitante = null,
 } = {}) {
     const tipo = dias === 0 ? 'cumpleanos_hoy' : 'cumpleanos_manana';
     const titulo = dias === 0 ? '🎂 Cumpleaños hoy' : '🎂 Cumpleaños mañana';
+    const fechaEvento = fechaEventoPorDias(dias);
 
     const cumpleanos = await query(
         `
@@ -294,13 +314,17 @@ async function generarNotificacionesCumpleanosPorDia({
             u.departamento,
             u.sucursalId,
             u.departamentoId,
-            TIMESTAMPDIFF(YEAR, u.fecha_nacimiento, CURDATE()) + 1 AS edad
+            TIMESTAMPDIFF(
+                YEAR,
+                u.fecha_nacimiento,
+                DATE_ADD(CURDATE(), INTERVAL ? DAY)
+            ) AS edad
         FROM usuarios u
         WHERE DAY(u.fecha_nacimiento) = DAY(DATE_ADD(CURDATE(), INTERVAL ? DAY))
           AND MONTH(u.fecha_nacimiento) = MONTH(DATE_ADD(CURDATE(), INTERVAL ? DAY))
           AND u.fecha_nacimiento IS NOT NULL
         `,
-        [dias, dias]
+        [dias, dias, dias]
     );
 
     let creadas = 0;
@@ -320,12 +344,14 @@ async function generarNotificacionesCumpleanosPorDia({
             prioridad: dias === 0 ? 'media' : 'baja',
             origen_tabla: 'usuarios',
             origen_id: emp.usuarioId,
-            fecha_evento: fechaSQL(new Date(Date.now() + dias * 24 * 60 * 60 * 1000)),
+            fecha_evento: fechaEvento,
             fecha_notificar: fechaSQL(new Date()),
             enviarPush,
         });
 
-        if (result.success && !result.duplicated) creadas += 1;
+        if (result.success && !result.duplicated) {
+            creadas += 1;
+        }
     }
 
     return {
@@ -461,11 +487,19 @@ async function generarNotificacionesPendientesRH({ usuarioId = null, enviarPush 
     const resultados = [];
 
     resultados.push(await generarNotificacionesEvaluaciones(usuarioId));
-    resultados.push(await generarNotificacionesCumpleanosManana({ enviarPush }));
+
+    resultados.push(await generarNotificacionesCumpleanosPorDia({
+        dias: 0,
+        enviarPush,
+    }));
+
+    resultados.push(await generarNotificacionesCumpleanosPorDia({
+        dias: 1,
+        enviarPush,
+    }));
+
     resultados.push(await generarNotificacionesVacacionesPendientes({ enviarPush }));
     resultados.push(await generarNotificacionesPermisosPendientes({ enviarPush }));
-    resultados.push(await generarNotificacionesCumpleanosPorDia({ dias: 0, enviarPush }));
-    resultados.push(await generarNotificacionesCumpleanosPorDia({ dias: 1, enviarPush }));
 
     const totalCreadas = resultados.reduce((sum, r) => sum + Number(r.creadas || 0), 0);
 
@@ -476,7 +510,6 @@ async function generarNotificacionesPendientesRH({ usuarioId = null, enviarPush 
         resultados,
     };
 }
-
 /**
  * Obtiene notificaciones internas para RH.
  * Si generar=true, primero crea pendientes nuevas.
