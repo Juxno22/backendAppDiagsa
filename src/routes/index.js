@@ -1458,8 +1458,9 @@ router.get("/rh/cumpleanos", authMiddleware, async (req, res) => {
                     MONTH(fecha_nacimiento) AS mes,
                     YEAR(fecha_nacimiento)  AS anio,
                     TIMESTAMPDIFF(YEAR, fecha_nacimiento, CURDATE()) AS edad,
-                    departamento, nombre_puesto
+                    departamento, nombre_puesto, s.nombre_sucursal AS nombre_sucursal
                 FROM usuarios u
+                LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
                 LEFT JOIN puesto p ON u.puestoId = p.puestoId
                 WHERE MONTH(fecha_nacimiento) = ?
                   AND fecha_nacimiento IS NOT NULL
