@@ -275,6 +275,66 @@ async function generarNotificacionesCumpleanosManana({ enviarPush = false } = {}
         total: cumpleanos.length,
     };
 }
+async function generarNotificacionesCumpleanosPorDia({
+    dias = 1,
+    enviarPush = false,
+    usuarioSolicitante = null,
+} = {}) {
+    const tipo = dias === 0 ? 'cumpleanos_hoy' : 'cumpleanos_manana';
+    const titulo = dias === 0 ? '🎂 Cumpleaños hoy' : '🎂 Cumpleaños mañana';
+
+    const cumpleanos = await query(
+        `
+        SELECT
+            u.usuarioId,
+            u.nombre,
+            u.apPaterno,
+            u.apMaterno,
+            u.fecha_nacimiento,
+            u.departamento,
+            u.sucursalId,
+            u.departamentoId,
+            TIMESTAMPDIFF(YEAR, u.fecha_nacimiento, CURDATE()) + 1 AS edad
+        FROM usuarios u
+        WHERE DAY(u.fecha_nacimiento) = DAY(DATE_ADD(CURDATE(), INTERVAL ? DAY))
+          AND MONTH(u.fecha_nacimiento) = MONTH(DATE_ADD(CURDATE(), INTERVAL ? DAY))
+          AND u.fecha_nacimiento IS NOT NULL
+        `,
+        [dias, dias]
+    );
+
+    let creadas = 0;
+
+    for (const emp of cumpleanos) {
+        const nombreCompleto = `${emp.nombre || ''} ${emp.apPaterno || ''} ${emp.apMaterno || ''}`.trim();
+
+        const result = await crearNotificacionRH({
+            usuarioId: emp.usuarioId,
+            tipo,
+            titulo,
+            mensaje:
+                dias === 0
+                    ? `Hoy cumple años ${nombreCompleto}${emp.edad ? ` (${emp.edad} años)` : ''}.`
+                    : `Mañana cumple años ${nombreCompleto}${emp.edad ? ` (${emp.edad} años)` : ''}.`,
+            url: '/rh/cumpleanos',
+            prioridad: dias === 0 ? 'media' : 'baja',
+            origen_tabla: 'usuarios',
+            origen_id: emp.usuarioId,
+            fecha_evento: fechaSQL(new Date(Date.now() + dias * 24 * 60 * 60 * 1000)),
+            fecha_notificar: fechaSQL(new Date()),
+            enviarPush,
+        });
+
+        if (result.success && !result.duplicated) creadas += 1;
+    }
+
+    return {
+        success: true,
+        message: dias === 0 ? 'Cumpleaños de hoy procesados' : 'Cumpleaños de mañana procesados',
+        creadas,
+        total: cumpleanos.length,
+    };
+}
 
 async function generarNotificacionesVacacionesPendientes({ enviarPush = false } = {}) {
     const vacaciones = await query(
@@ -404,6 +464,8 @@ async function generarNotificacionesPendientesRH({ usuarioId = null, enviarPush 
     resultados.push(await generarNotificacionesCumpleanosManana({ enviarPush }));
     resultados.push(await generarNotificacionesVacacionesPendientes({ enviarPush }));
     resultados.push(await generarNotificacionesPermisosPendientes({ enviarPush }));
+    resultados.push(await generarNotificacionesCumpleanosPorDia({ dias: 0, enviarPush }));
+    resultados.push(await generarNotificacionesCumpleanosPorDia({ dias: 1, enviarPush }));
 
     const totalCreadas = resultados.reduce((sum, r) => sum + Number(r.creadas || 0), 0);
 
@@ -589,6 +651,7 @@ module.exports = {
     generarNotificacionesPendientesRH,
     generarNotificacionesEvaluaciones,
     generarNotificacionesCumpleanosManana,
+    generarNotificacionesCumpleanosPorDia,
     generarNotificacionesVacacionesPendientes,
     generarNotificacionesPermisosPendientes,
     getNotificacionesRH,

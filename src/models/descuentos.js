@@ -60,7 +60,11 @@ async function crearDescuentoPrestamo(usuarioId, data = {}) {
     const montoTotal = redondear2(data.monto_total ?? data.monto);
     const totalPagos = Number(data.total_pagos || data.plazo_quincenas || 1);
     const periodicidad = data.periodicidad || 'quincena';
-    const fechaInicio = data.fecha_inicio || siguienteFechaQuincena(new Date());
+    const fechaInicio = fechaLocalYYYYMMDD(new Date());
+    const fechaProximoPago =
+        data.fecha_proximo_pago ||
+        data.fecha_inicio ||
+        siguienteFechaQuincena(new Date());
     const observaciones = data.observaciones || null;
 
     if (!usuarioId) {
@@ -119,7 +123,7 @@ async function crearDescuentoPrestamo(usuarioId, data = {}) {
             periodicidad,
             totalPagos,
             fechaInicio,
-            fechaInicio,
+            fechaProximoPago,
             observaciones,
         ]
     );
