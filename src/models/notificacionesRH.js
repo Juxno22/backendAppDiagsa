@@ -249,51 +249,10 @@ async function generarNotificacionesEvaluaciones(usuarioId = null) {
 }
 
 async function generarNotificacionesCumpleanosManana({ enviarPush = false } = {}) {
-    const cumpleanos = await query(
-        `
-        SELECT
-            u.usuarioId,
-            u.nombre,
-            u.apPaterno,
-            u.apMaterno,
-            u.fecha_nacimiento,
-            u.departamento,
-            TIMESTAMPDIFF(YEAR, u.fecha_nacimiento, CURDATE()) + 1 AS edad
-        FROM usuarios u
-        WHERE DAY(u.fecha_nacimiento) = DAY(DATE_ADD(CURDATE(), INTERVAL 1 DAY))
-          AND MONTH(u.fecha_nacimiento) = MONTH(DATE_ADD(CURDATE(), INTERVAL 1 DAY))
-          AND u.fecha_nacimiento IS NOT NULL
-        `
-    );
-
-    let creadas = 0;
-
-    for (const emp of cumpleanos) {
-        const nombreCompleto = `${emp.nombre || ''} ${emp.apPaterno || ''} ${emp.apMaterno || ''}`.trim();
-
-        const result = await crearNotificacionRH({
-            usuarioId: emp.usuarioId,
-            tipo: 'cumpleanos_manana',
-            titulo: '🎂 Cumpleaños mañana',
-            mensaje: `Mañana cumple años ${nombreCompleto}${emp.edad ? ` (${emp.edad} años)` : ''}.`,
-            url: '/rh/cumpleanos',
-            prioridad: 'baja',
-            origen_tabla: 'usuarios',
-            origen_id: emp.usuarioId,
-            fecha_evento: fechaSQL(new Date(Date.now() + 24 * 60 * 60 * 1000)),
-            fecha_notificar: fechaSQL(new Date()),
-            enviarPush,
-        });
-
-        if (result.success && !result.duplicated) creadas += 1;
-    }
-
-    return {
-        success: true,
-        message: 'Notificaciones de cumpleaños procesadas',
-        creadas,
-        total: cumpleanos.length,
-    };
+    return generarNotificacionesCumpleanosPorDia({
+        dias: 1,
+        enviarPush,
+    });
 }
 async function generarNotificacionesCumpleanosPorDia({
     dias = 1,
