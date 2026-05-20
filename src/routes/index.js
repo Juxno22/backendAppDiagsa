@@ -1263,11 +1263,13 @@ router.get('/rh/notificaciones', authMiddleware, async (req, res) => {
         const soloNoLeidas = req.query.noLeidas === 'true';
 
         await generarNotificacionesPendientesRH({
+            usuarioId: null,
             enviarPush: false,
         });
 
         const notificaciones = await getNotificacionesRH(soloNoLeidas, {
             generar: false,
+            lectorUsuarioId: req.user.usuarioId,
         });
 
         return res.json({
@@ -1286,24 +1288,23 @@ router.get('/rh/notificaciones', authMiddleware, async (req, res) => {
 });
 
 /// GET /api/rh/notificaciones/count — badge contador por usuario RH
-router.get('/rh/notificaciones/count', authMiddleware, soloRH, async (req, res) => {
+router.get('/rh/notificaciones/count', authMiddleware, async (req, res) => {
     try {
-        const lectorUsuarioId = req.user?.usuarioId;
+        await generarNotificacionesPendientesRH({
+            usuarioId: null,
+            enviarPush: false,
+        });
 
-        if (!lectorUsuarioId) {
-            return res.status(401).json({
-                success: false,
-                message: 'Usuario autenticado no válido',
-            });
-        }
-
-        await generarNotificacionesPendientesRH({ enviarPush: false });
-
-        const total = await contarNoLeidas(lectorUsuarioId);
+        const notificaciones = await getNotificacionesRH(true, {
+            generar: false,
+            lectorUsuarioId: req.user.usuarioId,
+        });
 
         return res.json({
             success: true,
-            data: { total },
+            data: {
+                total: notificaciones.length,
+            },
         });
     } catch (error) {
         console.error('[GET /rh/notificaciones/count]', error);
@@ -1315,20 +1316,38 @@ router.get('/rh/notificaciones/count', authMiddleware, soloRH, async (req, res) 
     }
 });
 // PATCH /api/rh/notificaciones/leer-todas — se conserva para uso futuro, pero por usuario RH
-router.patch('/rh/notificaciones/leer-todas', authMiddleware, soloRH, async (req, res) => {
+router.patch('/rh/notificaciones/leer-todas', authMiddleware, async (req, res) => {
     try {
-        const lectorUsuarioId = req.user?.usuarioId;
+        const lectorUsuarioId = req.user.usuarioId;
 
-        if (!lectorUsuarioId) {
-            return res.status(401).json({
-                success: false,
-                message: 'Usuario autenticado no válido',
-            });
+        const notificaciones = await getNotificacionesRH(true, {
+            generar: false,
+            lectorUsuarioId,
+        });
+
+        for (const n of notificaciones) {
+            await query(
+                `
+                INSERT INTO notificaciones_rh_lecturas (
+                    notificacionId,
+                    usuarioId,
+                    leida,
+                    leidaAt
+                )
+                VALUES (?, ?, 1, NOW())
+                ON DUPLICATE KEY UPDATE
+                    leida = 1,
+                    leidaAt = NOW()
+                `,
+                [n.notificacionId, lectorUsuarioId]
+            );
         }
 
-        const result = await marcarTodasComoLeidas(lectorUsuarioId);
-
-        return res.json(result);
+        return res.json({
+            success: true,
+            message: 'Notificaciones marcadas como leídas',
+            total: notificaciones.length,
+        });
     } catch (error) {
         console.error('[PATCH /rh/notificaciones/leer-todas]', error);
 
@@ -1340,28 +1359,38 @@ router.patch('/rh/notificaciones/leer-todas', authMiddleware, soloRH, async (req
 });
 
 // PATCH /api/rh/notificaciones/:id/leer — marcar una notificación como leída solo para este usuario RH
-router.patch('/rh/notificaciones/:id/leer', authMiddleware, soloRH, async (req, res) => {
+router.patch('/rh/notificaciones/:id/leer', authMiddleware, async (req, res) => {
     try {
-        const lectorUsuarioId = req.user?.usuarioId;
-        const id = Number(req.params.id);
+        const notificacionId = Number(req.params.id);
+        const lectorUsuarioId = req.user.usuarioId;
 
-        if (!lectorUsuarioId) {
-            return res.status(401).json({
-                success: false,
-                message: 'Usuario autenticado no válido',
-            });
-        }
-
-        if (!id) {
+        if (!notificacionId) {
             return res.status(400).json({
                 success: false,
                 message: 'ID inválido',
             });
         }
 
-        const result = await marcarComoLeida(id, lectorUsuarioId);
+        await query(
+            `
+            INSERT INTO notificaciones_rh_lecturas (
+                notificacionId,
+                usuarioId,
+                leida,
+                leidaAt
+            )
+            VALUES (?, ?, 1, NOW())
+            ON DUPLICATE KEY UPDATE
+                leida = 1,
+                leidaAt = NOW()
+            `,
+            [notificacionId, lectorUsuarioId]
+        );
 
-        return res.json(result);
+        return res.json({
+            success: true,
+            message: 'Notificación marcada como leída',
+        });
     } catch (error) {
         console.error('[PATCH /rh/notificaciones/:id/leer]', error);
 
