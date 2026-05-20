@@ -273,7 +273,7 @@ async function generarNotificacionesCumpleanosPorDia({
             u.departamento,
             u.sucursalId,
             u.departamentoId,
-            s.nombre AS nombre_sucursal,
+            s.nombre_sucursal AS nombre_sucursal,
             d.nombre AS nombre_departamento,
             TIMESTAMPDIFF(
                 YEAR,
