@@ -1763,38 +1763,59 @@ router.get('/rh/cumpleanos/hijos/manana', authMiddleware, async (req, res) => {
 // ── Cambio de contraseña — cualquier usuario autenticado ────
 router.patch('/usuarios/cambiar-contrasena', authMiddleware, async (req, res) => {
     try {
-        const { contrasenaActual, contrasenaNueva } = req.body;
+        console.log('Body recibido:', req.body);
+        console.log('Usuario:', req.user);
+
+        const { contrasenaActual, contrasenaNueva } = req.body || {};
+
+        if (!contrasenaActual || !contrasenaNueva) {
+            return res.status(400).json({
+                success: false,
+                message: 'Contraseña actual y nueva contraseña son requeridas',
+            });
+        }
+
         const usuarioId = req.user.usuarioId;
 
-        if (!contrasenaActual || !contrasenaNueva)
-            return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
+        const rows = await query(
+            'SELECT contrasenia FROM usuarios WHERE usuarioId = ?',
+            [usuarioId]
+        );
 
-        if (contrasenaNueva.length < 6)
-            return res.status(400).json({ success: false, message: 'La nueva contraseña debe tener al menos 6 caracteres' });
-
-        // Verificar contraseña actual
-        const rows = await new Promise((resolve, reject) => {
-            connection.query('SELECT contrasenia FROM usuarios WHERE usuarioId = ?',
-                [usuarioId], (err, r) => err ? reject(err) : resolve(r));
-        });
-
-        if (!rows.length)
-            return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+        if (!rows.length) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado',
+            });
+        }
 
         const match = await bcrypt.compare(contrasenaActual, rows[0].contrasenia);
-        if (!match)
-            return res.status(401).json({ success: false, message: 'La contraseña actual es incorrecta' });
 
-        // Guardar nueva contraseña
+        if (!match) {
+            return res.status(401).json({
+                success: false,
+                message: 'La contraseña actual es incorrecta',
+            });
+        }
+
         const hash = await bcrypt.hash(contrasenaNueva, 10);
-        await new Promise((resolve, reject) => {
-            connection.query('UPDATE usuarios SET contrasenia = ? WHERE usuarioId = ?',
-                [hash, usuarioId], (err) => err ? reject(err) : resolve(null));
-        });
 
-        res.json({ success: true, message: 'Contraseña actualizada correctamente' });
+        await query(
+            'UPDATE usuarios SET contrasenia = ? WHERE usuarioId = ?',
+            [hash, usuarioId]
+        );
+
+        return res.json({
+            success: true,
+            message: 'Contraseña actualizada correctamente',
+        });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error('[PATCH /usuarios/cambiar-contrasena]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al cambiar contraseña',
+        });
     }
 });
 
