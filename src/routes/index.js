@@ -107,6 +107,13 @@ const {
     liquidarDescuento,
     cancelarDescuento,
 } = require('../models/descuentos');
+const {
+    getCatalogoGerentesYColaboradores,
+    getSubordinadosByGerente,
+    asignarSubordinadosAGerente,
+    eliminarSubordinadoDeGerente,
+} = require('../models/gerentesSubordinados');
+
 const query = (sql, values = []) =>
     new Promise((resolve, reject) => {
         connection.query(sql, values, (err, results) => {
@@ -1641,31 +1648,23 @@ router.post('/rh/empleados/:id/vehiculo', authMiddleware, async (req, res) => {
 // Agregar hijo
 router.post('/rh/empleados/:id/hijos', authMiddleware, async (req, res) => {
     try {
-        const { nombre, fecha_nacimiento, genero } = req.body;
-
-        const normalizarGeneroHijo = (valor) => {
-            const v = String(valor || '').trim().toLowerCase();
-            if (v === 'masculino') return 'Masculino';
-            if (v === 'femenino') return 'Femenino';
-            return null;
-        };
-
-        const generoNormalizado = normalizarGeneroHijo(genero);
-
-        if (genero && !generoNormalizado) {
+        const { nombre, fecha_nacimiento, genero } = req.body
+        const generoNormalizado = genero || null;
+        if (
+            generoNormalizado &&
+            !['Masculino', 'Femenino'].includes(generoNormalizado)
+        ) {
             return res.status(400).json({
                 success: false,
                 message: 'Género inválido. Usa Masculino o Femenino',
             });
         }
-
         const result = await addHijo(
             Number(req.params.id),
             nombre,
             fecha_nacimiento,
             generoNormalizado
         );
-
         res.status(201).json(result);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -2962,6 +2961,159 @@ router.patch('/rh/descuentos/:descuentoId/cancelar', authMiddleware, async (req,
         return res.status(500).json({
             success: false,
             message: error.message || 'Error al cancelar deducción',
+        });
+    }
+});
+
+
+/**
+ * Gerentes subordinados
+ * RH/RHAdmin asigna colaboradores a gerentes.
+ * El gerente consulta solo sus subordinados asignados.
+ */
+
+/**
+ * GET /api/rh/gerentes-subordinados/catalogos
+ * Lista gerentes y colaboradores para asignación.
+ */
+router.get('/rh/gerentes-subordinados/catalogos', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const data = await getCatalogoGerentesYColaboradores({
+            rolGerenteId: ROL_GERENTE,
+            rolColaboradorId: ROL_COLABORADOR,
+        });
+
+        return res.json({
+            success: true,
+            data,
+        });
+    } catch (error) {
+        console.error('[GET /rh/gerentes-subordinados/catalogos]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener catálogos de gerentes y colaboradores',
+        });
+    }
+});
+
+/**
+ * GET /api/rh/gerentes/:gerenteId/subordinados
+ * RH/RHAdmin consulta subordinados asignados a un gerente.
+ */
+router.get('/rh/gerentes/:gerenteId/subordinados', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const gerenteId = Number(req.params.gerenteId);
+
+        if (!gerenteId) {
+            return res.status(400).json({
+                success: false,
+                message: 'gerenteId inválido',
+            });
+        }
+
+        const subordinados = await getSubordinadosByGerente(gerenteId);
+
+        return res.json({
+            success: true,
+            data: subordinados,
+            total: subordinados.length,
+        });
+    } catch (error) {
+        console.error('[GET /rh/gerentes/:gerenteId/subordinados]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener subordinados del gerente',
+        });
+    }
+});
+
+/**
+ * POST /api/rh/gerentes/:gerenteId/subordinados
+ * Body: { subordinadoIds: number[] }
+ */
+router.post('/rh/gerentes/:gerenteId/subordinados', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const gerenteId = Number(req.params.gerenteId);
+        const subordinadoIds = req.body?.subordinadoIds || [];
+
+        if (!gerenteId) {
+            return res.status(400).json({
+                success: false,
+                message: 'gerenteId inválido',
+            });
+        }
+
+        const result = await asignarSubordinadosAGerente({
+            gerenteId,
+            subordinadoIds,
+        });
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error('[POST /rh/gerentes/:gerenteId/subordinados]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al asignar subordinados',
+        });
+    }
+});
+
+/**
+ * DELETE /api/rh/gerentes/:gerenteId/subordinados/:subordinadoId
+ * Quita un colaborador de un gerente.
+ */
+router.delete('/rh/gerentes/:gerenteId/subordinados/:subordinadoId', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const gerenteId = Number(req.params.gerenteId);
+        const subordinadoId = Number(req.params.subordinadoId);
+
+        if (!gerenteId || !subordinadoId) {
+            return res.status(400).json({
+                success: false,
+                message: 'IDs inválidos',
+            });
+        }
+
+        const result = await eliminarSubordinadoDeGerente({
+            gerenteId,
+            subordinadoId,
+        });
+
+        return res.json(result);
+    } catch (error) {
+        console.error('[DELETE /rh/gerentes/:gerenteId/subordinados/:subordinadoId]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al remover subordinado',
+        });
+    }
+});
+
+/**
+ * GET /api/gerente/mis-subordinados
+ * El gerente consulta los colaboradores que RH le asignó.
+ */
+router.get('/gerente/mis-subordinados', authMiddleware, async (req, res) => {
+    try {
+        if (Number(req.user?.rolId) !== Number(ROL_GERENTE)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Solo gerente puede consultar sus subordinados',
+            });
+        }
+
+        const subordinados = await getSubordinadosByGerente(req.user.usuarioId);
+
+        return res.json({
+            success: true,
+            data: subordinados,
+            total: subordinados.length,
+        });
+    } catch (error) {
+        console.error('[GET /gerente/mis-subordinados]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener subordinados del gerente',
         });
     }
 });

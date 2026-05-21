@@ -10,6 +10,43 @@ const query = (sql, values = []) => {
     });
 };
 
+const getConnection = () =>
+    new Promise((resolve, reject) => {
+        connection.getConnection((error, conn) => {
+            if (error) reject(error);
+            else resolve(conn);
+        });
+    });
+
+const queryConn = (conn, sql, values = []) =>
+    new Promise((resolve, reject) => {
+        conn.query(sql, values, (error, results) => {
+            if (error) reject(error);
+            else resolve(results);
+        });
+    });
+
+const beginTransaction = (conn) =>
+    new Promise((resolve, reject) => {
+        conn.beginTransaction((error) => {
+            if (error) reject(error);
+            else resolve();
+        });
+    });
+
+const commitTransaction = (conn) =>
+    new Promise((resolve, reject) => {
+        conn.commit((error) => {
+            if (error) reject(error);
+            else resolve();
+        });
+    });
+
+const rollbackTransaction = (conn) =>
+    new Promise((resolve) => {
+        conn.rollback(() => resolve());
+    });
+
 async function getSecciones() {
     const secciones = await query(`
         SELECT seccionId, nombre, orden
@@ -75,63 +112,57 @@ async function createEvaluacionCompleta(evalData) {
         return { success: false, message: 'Debes incluir las respuestas de la evaluación' };
     }
 
-    return new Promise((resolve) => {
-        connection.beginTransaction(async (errTx) => {
-            if (errTx) {
-                resolve({ success: false, message: 'Error al iniciar transacción' });
-                return;
-            }
+    const conn = await getConnection();
 
-            try {
-                // 1. Insertar evaluación — sin evaluador_id
-                const resultEval = await query(`
-                    INSERT INTO evaluaciones (
-                        usuarioId, plantillaId, periodo_evaluacionesId,
-                        fecha_evaluacion, promedio_final, recontratacion,
-                        comentario_empleado, comentario_jefe_inmediato,
-                        comentario_siguiente_evaluacion, comentario_final
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `, [
-                    usuarioId, plantillaId, periodo_evaluacionesId,
-                    fecha_evaluacion, promedio_final, recontratacion,
-                    comentario_empleado, comentario_jefe_inmediato,
-                    comentario_siguiente_evaluacion, comentario_final,
-                ]);
+    try {
+        await beginTransaction(conn);
 
-                const evaluacionesId = resultEval.insertId;
+        // 1. Insertar evaluación — sin evaluador_id
+        const resultEval = await queryConn(conn, `
+            INSERT INTO evaluaciones (
+                usuarioId, plantillaId, periodo_evaluacionesId,
+                fecha_evaluacion, promedio_final, recontratacion,
+                comentario_empleado, comentario_jefe_inmediato,
+                comentario_siguiente_evaluacion, comentario_final
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            usuarioId, plantillaId, periodo_evaluacionesId,
+            fecha_evaluacion, promedio_final, recontratacion,
+            comentario_empleado, comentario_jefe_inmediato,
+            comentario_siguiente_evaluacion, comentario_final,
+        ]);
 
-                // 2. Insertar respuestas
-                for (const r of respuestas) {
-                    await query(`
-                        INSERT INTO evaluacion_respuestas
-                            (evaluacionId, preguntaId, puntuacion)
-                        VALUES (?, ?, ?)
-                    `, [evaluacionesId, r.preguntaId, r.puntuacion]);
-                }
+        const evaluacionesId = resultEval.insertId;
 
-                // 3. Commit
-                connection.commit((errCommit) => {
-                    if (errCommit) {
-                        connection.rollback(() => {
-                            resolve({ success: false, message: 'Error al confirmar la evaluación' });
-                        });
-                        return;
-                    }
-                    resolve({
-                        success: true,
-                        message: 'Evaluación creada correctamente',
-                        evaluacionesId,
-                    });
-                });
+        // 2. Insertar respuestas
+        for (const r of respuestas) {
+            await queryConn(conn, `
+                INSERT INTO evaluacion_respuestas
+                    (evaluacionId, preguntaId, puntuacion)
+                VALUES (?, ?, ?)
+            `, [evaluacionesId, r.preguntaId, r.puntuacion]);
+        }
 
-            } catch (error) {
-                connection.rollback(() => {
-                    console.error('Error en createEvaluacionCompleta:', error);
-                    resolve({ success: false, message: error.message || 'Error al crear la evaluación' });
-                });
-            }
-        });
-    });
+        // 3. Commit
+        await commitTransaction(conn);
+
+        return {
+            success: true,
+            message: 'Evaluación creada correctamente',
+            evaluacionesId,
+        };
+    } catch (error) {
+        await rollbackTransaction(conn);
+
+        console.error('Error en createEvaluacionCompleta:', error);
+
+        return {
+            success: false,
+            message: error.message || 'Error al crear la evaluación',
+        };
+    } finally {
+        conn.release();
+    }
 }
 
 async function getEvaluacionesByEmpleado(usuarioId) {
