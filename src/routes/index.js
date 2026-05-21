@@ -1641,8 +1641,23 @@ router.post('/rh/empleados/:id/vehiculo', authMiddleware, async (req, res) => {
 // Agregar hijo
 router.post('/rh/empleados/:id/hijos', authMiddleware, async (req, res) => {
     try {
-        const { nombre, fecha_nacimiento } = req.body;
-        const result = await addHijo(Number(req.params.id), nombre, fecha_nacimiento);
+        const { nombre, fecha_nacimiento, genero } = req.body
+        const generoNormalizado = genero || null;
+        if (
+            generoNormalizado &&
+            !['Masculino', 'Femenino'].includes(generoNormalizado)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: 'Género inválido. Usa Masculino o Femenino',
+            });
+        }
+        const result = await addHijo(
+            Number(req.params.id),
+            nombre,
+            fecha_nacimiento,
+            generoNormalizado
+        );
         res.status(201).json(result);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -1749,13 +1764,17 @@ router.get('/rh/cumpleanos/hijos', authMiddleware, async (req, res) => {
         const rows = await new Promise((resolve, reject) => {
             connection.query(`
                 SELECT
-                    h.hijoId, h.nombre, h.fecha_nacimiento,
-                    DAY(h.fecha_nacimiento)   AS dia,
+                    SELECT
+                    h.hijoId,
+                    h.nombre,
+                    h.fecha_nacimiento,
+                    h.genero,
+                    DAY(h.fecha_nacimiento) AS dia,
                     MONTH(h.fecha_nacimiento) AS mes,
                     TIMESTAMPDIFF(YEAR, h.fecha_nacimiento, CURDATE()) AS edad,
-                    u.nombre        AS padre_nombre,
-                    u.apPaterno     AS padre_apPaterno,
-                    u.apMaterno     AS padre_apMaterno,
+                    u.nombre AS padre_nombre,
+                    u.apPaterno AS padre_apPaterno,
+                    u.apMaterno AS padre_apMaterno,
                     u.departamento,
                     u.foto
                 FROM hijos h
@@ -1777,11 +1796,16 @@ router.get('/rh/cumpleanos/hijos/manana', authMiddleware, async (req, res) => {
         const rows = await new Promise((resolve, reject) => {
             connection.query(`
                 SELECT
-                    h.hijoId, h.nombre, h.fecha_nacimiento,
-                    TIMESTAMPDIFF(YEAR, h.fecha_nacimiento, CURDATE()) + 1 AS edad,
-                    u.nombre    AS padre_nombre,
-                    u.apPaterno AS padre_apPaterno,
-                    u.departamento, u.foto
+                    SELECT
+                        h.hijoId,
+                        h.nombre,
+                        h.fecha_nacimiento,
+                        h.genero,
+                        TIMESTAMPDIFF(YEAR, h.fecha_nacimiento, CURDATE()) + 1 AS edad,
+                        u.nombre AS padre_nombre,
+                        u.apPaterno AS padre_apPaterno,
+                        u.departamento,
+                        u.foto
                 FROM hijos h
                 LEFT JOIN usuarios u ON h.usuarioId = u.usuarioId
                 WHERE DAY(h.fecha_nacimiento)   = DAY(DATE_ADD(CURDATE(), INTERVAL 1 DAY))

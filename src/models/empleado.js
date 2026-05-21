@@ -811,12 +811,30 @@ async function getHijosByEmpleado(usuarioId) {
     );
 }
 
-async function addHijo(usuarioId, nombre, fecha_nacimiento, genero) {
+async function addHijo(usuarioId, nombre, fecha_nacimiento, genero = null) {
+    if (genero && !['Masculino', 'Femenino'].includes(genero)) {
+        throw new Error('Género inválido. Usa Masculino o Femenino');
+    }
     const result = await query(
-        'INSERT INTO hijos (usuarioId, nombre, fecha_nacimiento, genero) VALUES (?, ?, ?,?)',
-        [usuarioId, nombre, fecha_nacimiento || null, genero]
+        `
+        INSERT INTO hijos (
+            usuarioId,
+            nombre,
+            fecha_nacimiento,
+            genero
+        ) VALUES (?, ?, ?, ?)
+        `,
+        [
+            usuarioId,
+            nombre,
+            fecha_nacimiento || null,
+            genero || null,
+        ]
     );
-    return { success: true, hijoId: result.insertId };
+    return {
+        success: true,
+        hijoId: result.insertId,
+    };
 }
 
 async function deleteHijo(hijoId) {
