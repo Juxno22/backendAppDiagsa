@@ -10,14 +10,11 @@ const { upload, subirImagen } = require("../config/cloudinary");
 const { uploadPDF, subirPDF } = require('../config/cloudinary');
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
-const {
-    generarExcelBD,
+const { generarExcelBD,
     generarExcelContrato,
-    generarExcelEmpleadoCompleto,
     registrarLog,
     getExportLogs,
-    SECCIONES_VALIDAS,
-} = require('../models/exportarBD');
+    SECCIONES_VALIDAS, } = require('../models/exportarBD');
 const {
     crearPermiso, getPermisosByEmpleado, getTodosPermisos,
     getPermisoById, responderPermiso, deletePermiso,
@@ -1641,23 +1638,24 @@ router.post('/rh/empleados/:id/vehiculo', authMiddleware, async (req, res) => {
 // Agregar hijo
 router.post('/rh/empleados/:id/hijos', authMiddleware, async (req, res) => {
     try {
-        const { nombre, fecha_nacimiento, genero } = req.body
-        const generoNormalizado = genero || null;
-        if (
-            generoNormalizado &&
-            !['Masculino', 'Femenino'].includes(generoNormalizado)
-        ) {
+        const { nombre, fecha_nacimiento, genero } = req.body;
+
+        const generoFinal = genero || null;
+
+        if (generoFinal && !['Masculino', 'Femenino'].includes(generoFinal)) {
             return res.status(400).json({
                 success: false,
                 message: 'Género inválido. Usa Masculino o Femenino',
             });
         }
+
         const result = await addHijo(
             Number(req.params.id),
             nombre,
             fecha_nacimiento,
-            generoNormalizado
+            generoFinal
         );
+
         res.status(201).json(result);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -1764,17 +1762,13 @@ router.get('/rh/cumpleanos/hijos', authMiddleware, async (req, res) => {
         const rows = await new Promise((resolve, reject) => {
             connection.query(`
                 SELECT
-                    SELECT
-                    h.hijoId,
-                    h.nombre,
-                    h.fecha_nacimiento,
-                    h.genero,
-                    DAY(h.fecha_nacimiento) AS dia,
+                    h.hijoId, h.nombre, h.fecha_nacimiento,
+                    DAY(h.fecha_nacimiento)   AS dia,
                     MONTH(h.fecha_nacimiento) AS mes,
                     TIMESTAMPDIFF(YEAR, h.fecha_nacimiento, CURDATE()) AS edad,
-                    u.nombre AS padre_nombre,
-                    u.apPaterno AS padre_apPaterno,
-                    u.apMaterno AS padre_apMaterno,
+                    u.nombre        AS padre_nombre,
+                    u.apPaterno     AS padre_apPaterno,
+                    u.apMaterno     AS padre_apMaterno,
                     u.departamento,
                     u.foto
                 FROM hijos h
@@ -1796,16 +1790,11 @@ router.get('/rh/cumpleanos/hijos/manana', authMiddleware, async (req, res) => {
         const rows = await new Promise((resolve, reject) => {
             connection.query(`
                 SELECT
-                    SELECT
-                        h.hijoId,
-                        h.nombre,
-                        h.fecha_nacimiento,
-                        h.genero,
-                        TIMESTAMPDIFF(YEAR, h.fecha_nacimiento, CURDATE()) + 1 AS edad,
-                        u.nombre AS padre_nombre,
-                        u.apPaterno AS padre_apPaterno,
-                        u.departamento,
-                        u.foto
+                    h.hijoId, h.nombre, h.fecha_nacimiento,
+                    TIMESTAMPDIFF(YEAR, h.fecha_nacimiento, CURDATE()) + 1 AS edad,
+                    u.nombre    AS padre_nombre,
+                    u.apPaterno AS padre_apPaterno,
+                    u.departamento, u.foto
                 FROM hijos h
                 LEFT JOIN usuarios u ON h.usuarioId = u.usuarioId
                 WHERE DAY(h.fecha_nacimiento)   = DAY(DATE_ADD(CURDATE(), INTERVAL 1 DAY))
@@ -1877,42 +1866,18 @@ router.patch('/usuarios/cambiar-contrasena', authMiddleware, async (req, res) =>
     }
 });
 
-// Exportación general o por sección.
-// Soporta filtros:
-// GET /api/rh/exportar-bd?seccion=empleados&sucursalId=2&departamentoId=3
+// Exportación general o por sección
 router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
     try {
         const seccion = req.query.seccion || 'general';
-
-        const filtros = {
-            sucursalId: req.query.sucursalId || null,
-            departamentoId: req.query.departamentoId || null,
-        };
-
-        const buffer = await generarExcelBD(seccion, filtros);
-
+        const buffer = await generarExcelBD(seccion);
         await registrarLog(
             req.user?.usuarioId,
             req.user?.usuario,
             req.ip || req.headers['x-forwarded-for'] || null
         );
-
         const fecha = new Date().toISOString().split('T')[0];
-
-        const partes = [`DIAGSA_${String(seccion).toUpperCase()}`];
-
-        if (filtros.sucursalId && filtros.sucursalId !== 'todos') {
-            partes.push(`SUCURSAL_${filtros.sucursalId}`);
-        }
-
-        if (filtros.departamentoId && filtros.departamentoId !== 'todos') {
-            partes.push(`DEPTO_${filtros.departamentoId}`);
-        }
-
-        partes.push(fecha);
-
-        const nombreArchivo = `${partes.join('_')}.xlsx`;
-
+        const nombreArchivo = `DIAGSA_${String(seccion).toUpperCase()}_${fecha}.xlsx`;
         res.setHeader(
             'Content-Type',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -1921,7 +1886,6 @@ router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
             'Content-Disposition',
             `attachment; filename="${nombreArchivo}"`
         );
-
         res.send(buffer);
     } catch (error) {
         console.error('Error al exportar BD:', error);
@@ -1931,59 +1895,18 @@ router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
         });
     }
 });
-
-// Exportación de expediente completo por empleado.
-// GET /api/rh/exportar-bd/empleado/:usuarioId
-router.get('/rh/exportar-bd/empleado/:usuarioId', authMiddleware, async (req, res) => {
-    try {
-        const { usuarioId } = req.params;
-
-        const buffer = await generarExcelEmpleadoCompleto(usuarioId);
-
-        await registrarLog(
-            req.user?.usuarioId,
-            req.user?.usuario,
-            req.ip || req.headers['x-forwarded-for'] || null
-        );
-
-        const fecha = new Date().toISOString().split('T')[0];
-        const nombreArchivo = `DIAGSA_EXPEDIENTE_EMPLEADO_${usuarioId}_${fecha}.xlsx`;
-
-        res.setHeader(
-            'Content-Type',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        );
-        res.setHeader(
-            'Content-Disposition',
-            `attachment; filename="${nombreArchivo}"`
-        );
-
-        res.send(buffer);
-    } catch (error) {
-        console.error('Error al exportar expediente de empleado:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message || 'Error al exportar expediente del empleado',
-        });
-    }
-});
-
-// Exportación de datos para contrato por empleado.
+// Exportación de datos para contrato por empleado
 router.get('/rh/exportar-bd/contrato/:usuarioId', authMiddleware, async (req, res) => {
     try {
         const { usuarioId } = req.params;
-
         const buffer = await generarExcelContrato(usuarioId);
-
         await registrarLog(
             req.user?.usuarioId,
             req.user?.usuario,
             req.ip || req.headers['x-forwarded-for'] || null
         );
-
         const fecha = new Date().toISOString().split('T')[0];
         const nombreArchivo = `DIAGSA_CONTRATO_${usuarioId}_${fecha}.xlsx`;
-
         res.setHeader(
             'Content-Type',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -1992,7 +1915,6 @@ router.get('/rh/exportar-bd/contrato/:usuarioId', authMiddleware, async (req, re
             'Content-Disposition',
             `attachment; filename="${nombreArchivo}"`
         );
-
         res.send(buffer);
     } catch (error) {
         console.error('Error al exportar contrato:', error);
@@ -2002,11 +1924,9 @@ router.get('/rh/exportar-bd/contrato/:usuarioId', authMiddleware, async (req, re
         });
     }
 });
-
 router.get('/rh/exportar-bd/logs', authMiddleware, async (req, res) => {
     try {
         const logs = await getExportLogs();
-
         res.json({
             success: true,
             data: logs,

@@ -1,6 +1,4 @@
 const connection = require("../config/connection");
-const { construirFiltroAccesoUsuarios } = require('../utils/accesos');
-const { getDescuentosByUsuario } = require('./descuentos');
 //Operaciones del empleado
 const query = (sql, values = []) => {
     return new Promise((resolve, reject) => {
@@ -20,32 +18,27 @@ async function getEmpleadoById(usuarioId) {
         SELECT
             u.usuarioId, u.nombre, u.apPaterno, u.apMaterno,
             u.usuario, u.fechaContratacion, u.departamento, u.jefe_inmediato,
-            u.sucursalId, u.departamentoId,
-            s.nombre_sucursal AS nombre_sucursal,
-            d.nombre AS nombre_departamento,
             p.nombre_puesto, t.nombre_tipo,
             r.nombre_rol, u.puestoId, u.tipoId, u.rolId,
             u.foto, u.sueldo, u.sueldo_bruto, u.fondo_ahorro, u.sueldo_neto,
-            u.sueldo_compensacion, u.sueldo_final,
-
+            -- Personales
             u.genero, u.estado_civil, u.numero_seguro_social,
             u.RFC, u.fecha_nacimiento, u.curp, u.celular,
             u.es_padre_madre, u.fecha_contrato_indeterminado_3m,
-
+            -- Uniformes
             u.talla_playera, u.talla_pantalon, u.talla_calzado,
             u.talla_faja, u.talla_guantes,
-
+            -- Fiscal adicional
             u.numero_cuenta, u.clabe_interbancaria, u.codigo_postal,
             u.infonavit, u.fonacot, u.pdf_rfc, u.pdf_psicometrico, u.razon_social,
-            u.nombre_banco, u.codigo_postal_fiscal,
-
+            -- Contacto emergencia
             u.emergencia_nombre, u.emergencia_telefono, u.emergencia_parentesco,
-
+            -- Domicilio
             u.domicilio_calle, u.domicilio_colonia, u.domicilio_localidad,
             u.domicilio_cp, u.domicilio_num_ext, u.domicilio_num_int,
             u.domicilio_municipio, u.domicilio_estado,
-            u.domicilio_lat, u.domicilio_lng,
-
+            u.domicilio_lat, u.domicilio_lng, u.nombre_banco,  u.codigo_postal_fiscal,
+            -- Días usados
             COALESCE((
                 SELECT SUM(DATEDIFF(v.fecha_fin_vacaciones, v.fecha_inicio_vacaciones) + 1)
                 FROM vacaciones v
@@ -54,45 +47,30 @@ async function getEmpleadoById(usuarioId) {
                   AND v.fecha_inicio_vacaciones >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)
             ), 0) AS dias_usados
         FROM usuarios u
-        LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
-        LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
-        LEFT JOIN puesto p ON u.puestoId = p.puestoId
-        LEFT JOIN tipos t ON u.tipoId = t.tipoId
-        LEFT JOIN roles r ON u.rolId = r.rolId
+        LEFT JOIN puesto  p ON u.puestoId = p.puestoId
+        LEFT JOIN tipos   t ON u.tipoId   = t.tipoId
+        LEFT JOIN roles   r ON u.rolId    = r.rolId
         WHERE u.usuarioId = ?
-        LIMIT 1
     `;
-    console.log('[getEmpleadoById] antes query principal');
     const rows = await query(sql, [usuarioId]);
-    console.log('[getEmpleadoById] despues query principal', rows.length);
     if (rows.length === 0) return null;
+
     const emp = rows[0];
     const dias = calcularDiasVacacionesLFT(emp.fechaContratacion);
-    const diasRestantes = Math.max(0, dias - Number(emp.dias_usados || 0));
-    console.log('[getEmpleadoById] antes queries extra');
-    const [vehiculos, hijos, descuentos] = await Promise.all([
-        query(`
-            SELECT *
-            FROM vehiculos
-            WHERE usuarioId = ?
-              AND tiene_vehiculo = 1
-            ORDER BY vehiculoId
-        `, [emp.usuarioId]),
-        query(`
-            SELECT *
-            FROM hijos
-            WHERE usuarioId = ?
-            ORDER BY hijoId
-        `, [emp.usuarioId]),
-        getDescuentosByUsuario(emp.usuarioId, false)
+    const diasRestantes = Math.max(0, dias - emp.dias_usados);
+
+    // Cargar vehículo, hijos y descuentos
+    const [vehiculo, hijos, descuentos] = await Promise.all([
+        query('SELECT * FROM vehiculos WHERE usuarioId = ? LIMIT 1', [emp.usuarioId]),
+        query('SELECT * FROM hijos WHERE usuarioId = ? ORDER BY hijoId', [emp.usuarioId]),
+        query('SELECT * FROM descuentos WHERE usuarioId = ? AND activo = 1 ORDER BY descuentoId', [emp.usuarioId]),
     ]);
-    console.log('[getEmpleadoById] despues queries extra');
+
     return {
         ...emp,
         dias_vacaciones_lft: dias,
         dias_restantes: diasRestantes,
-        vehiculos: vehiculos || [],
-        vehiculo: vehiculos?.[0] || null,
+        vehiculo: vehiculo[0] || null,
         hijos: hijos || [],
         descuentos: descuentos || [],
     };
@@ -119,18 +97,6 @@ async function getVacacionesByEmpleado(usuarioId) {
     `;
     return await query(sql, [usuarioId]);
 }
-function fechaLocalYYYYMMDD(fecha = new Date()) {
-    const y = fecha.getFullYear();
-    const m = String(fecha.getMonth() + 1).padStart(2, '0');
-    const d = String(fecha.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-}
-function sumarDiasYYYYMMDD(dias) {
-    const fecha = new Date();
-    fecha.setHours(0, 0, 0, 0);
-    fecha.setDate(fecha.getDate() + dias);
-    return fechaLocalYYYYMMDD(fecha);
-}
 /**
  * Crear una nueva solicitud de vacaciones para un empleado.
  * Validar que las fechas sean coherentes antes de insertar.
@@ -144,13 +110,7 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
     if (new Date(fechaInicio) > new Date(fechaFin)) {
         return { success: false, message: 'La fecha de inicio debe ser anterior a la fecha de fin' };
     }
-    const fechaMinimaVacaciones = sumarDiasYYYYMMDD(14);
-    if (String(fechaInicio).split('T')[0] < fechaMinimaVacaciones) {
-        return {
-            success: false,
-            message: 'Las vacaciones deben solicitarse con mínimo 2 semanas de anticipación',
-        };
-    }
+
     const diasExist = await query(
         'SELECT * FROM diasvacaciones WHERE dias_vacacionesId = ?',
         [dias_vacacionesId]
@@ -191,44 +151,7 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
         vacacionesId: result.insertId,
     };
 }
-async function getAllEmpleadosPorAcceso(req) {
-    const filtro = await construirFiltroAccesoUsuarios(req);
 
-    const sql = `
-        SELECT
-            u.usuarioId,
-            u.nombre,
-            u.apPaterno,
-            u.apMaterno,
-            u.usuario,
-            u.departamento,
-            u.departamentoId,
-            u.sucursalId,
-            s.nombre_sucursal AS nombre_sucursal,
-            u.jefe_inmediato,
-            p.nombre_puesto,
-            t.nombre_tipo,
-            r.nombre_rol,
-            u.puestoId,
-            u.tipoId,
-            u.rolId,
-            u.foto,
-            u.sueldo,
-            u.fechaContratacion,
-            u.sueldo_neto,
-            u.sueldo_compensacion,
-            u.sueldo_final
-        FROM usuarios u
-        LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
-        LEFT JOIN puesto p ON u.puestoId = p.puestoId
-        LEFT JOIN tipos t ON u.tipoId = t.tipoId
-        LEFT JOIN roles r ON u.rolId = r.rolId
-        ${filtro.where}
-        ORDER BY s.nombre_sucursal, u.departamento, u.apPaterno, u.nombre
-    `;
-
-    return await query(sql, filtro.params);
-}
 // Filtra por departamento si es Gerente o Auxiliar
 async function getAllEmpleados(rolId, departamento) {
     let sql = `
@@ -266,7 +189,12 @@ async function getAllEmpleados(rolId, departamento) {
  */
 async function updateEmpleado(usuarioId, datosNuevos) {
     //valiiidacion de campos numericos
-    const camposNumericos = ["sueldo_bruto", "fondo_ahorro", "sueldo_neto", "sueldo_compensacion", "sueldo_final",];
+    const camposNumericos = [
+        'sueldo',
+        'sueldo_bruto',
+        'sueldo_neto',
+        'fondo_ahorro'
+    ];
     for (const campo of camposNumericos) {
         if (datosNuevos[campo] !== undefined && datosNuevos[campo] !== null && datosNuevos[campo] !== '') {
             const numero = Number(datosNuevos[campo]);
@@ -321,8 +249,7 @@ async function updateEmpleado(usuarioId, datosNuevos) {
     }
     const camposPermitidos = [
         "nombre", "apPaterno", "apMaterno",
-        "puestoId", "tipoId", "sueldoId", "sueldo", "rolId",
-        "sucursalId", "departamentoId",
+        "puestoId", "tipoId", "sueldo", "rolId",
         "fechaContratacion", "departamento", "jefe_inmediato",
         "genero", "estado_civil", "numero_seguro_social",
         "RFC", "fecha_nacimiento", "curp", "celular",
@@ -336,8 +263,7 @@ async function updateEmpleado(usuarioId, datosNuevos) {
         "domicilio_calle", "domicilio_colonia", "domicilio_localidad",
         "domicilio_cp", "domicilio_num_ext", "domicilio_num_int",
         "domicilio_municipio", "domicilio_estado",
-        "domicilio_lat", "domicilio_lng", "razon_social",
-        "nombre_banco", "codigo_postal_fiscal",
+        "domicilio_lat", "domicilio_lng", "razon_social", "nombre_banco", "codigo_postal_fiscal"
     ];
     //filtrar solo los campos permitidos
     const camposAActualizar = Object.keys(datosNuevos).filter((k) =>
@@ -711,17 +637,20 @@ async function getDiasVacacionesLFT(usuarioId) {
 }
 // ── deleteEmpleado — registra la baja ─────────────────────────
 async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
-    if (![1, 7].includes(Number(rolSolicitante))) {
+    if (![3].includes(rolSolicitante)) {
         return { success: false, message: 'Solo RH puede eliminar empleados' };
     }
+
     const rows = await query(`
         SELECT u.*, p.nombre_puesto
         FROM usuarios u
         LEFT JOIN puesto p ON u.puestoId = p.puestoId
         WHERE u.usuarioId = ?
     `, [usuarioId]);
+
     if (rows.length === 0) return { success: false, message: 'Empleado no encontrado' };
     const emp = rows[0];
+
     // Calcular tiempo laboral
     let tiempoLaboral = '';
     if (emp.fechaContratacion) {
@@ -731,6 +660,7 @@ async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
         const meses = hoy.getMonth() - cont.getMonth();
         tiempoLaboral = `${años} año${años !== 1 ? 's' : ''} ${Math.abs(meses)} mes${Math.abs(meses) !== 1 ? 'es' : ''}`;
     }
+
     // Registrar en historial de bajas
     await query(`
         INSERT INTO bajas (
@@ -749,6 +679,7 @@ async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
         datosBaja.observaciones || null,
         datosBaja.registrado_por || null,
     ]);
+
     await query('DELETE FROM usuarios WHERE usuarioId = ?', [usuarioId]);
     return { success: true, message: 'Empleado eliminado y baja registrada' };
 };
@@ -815,26 +746,13 @@ async function addHijo(usuarioId, nombre, fecha_nacimiento, genero = null) {
     if (genero && !['Masculino', 'Femenino'].includes(genero)) {
         throw new Error('Género inválido. Usa Masculino o Femenino');
     }
+
     const result = await query(
-        `
-        INSERT INTO hijos (
-            usuarioId,
-            nombre,
-            fecha_nacimiento,
-            genero
-        ) VALUES (?, ?, ?, ?)
-        `,
-        [
-            usuarioId,
-            nombre,
-            fecha_nacimiento || null,
-            genero || null,
-        ]
+        'INSERT INTO hijos (usuarioId, nombre, fecha_nacimiento, genero) VALUES (?, ?, ?, ?)',
+        [usuarioId, nombre, fecha_nacimiento || null, genero || null]
     );
-    return {
-        success: true,
-        hijoId: result.insertId,
-    };
+
+    return { success: true, hijoId: result.insertId };
 }
 
 async function deleteHijo(hijoId) {
@@ -859,5 +777,4 @@ module.exports = {
     getHijosByEmpleado,
     addHijo,
     deleteHijo,
-    getAllEmpleadosPorAcceso,
 };
