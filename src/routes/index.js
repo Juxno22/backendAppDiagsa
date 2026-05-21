@@ -10,11 +10,14 @@ const { upload, subirImagen } = require("../config/cloudinary");
 const { uploadPDF, subirPDF } = require('../config/cloudinary');
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
-const { generarExcelBD,
+const {
+    generarExcelBD,
     generarExcelContrato,
+    generarExcelEmpleadoCompleto,
     registrarLog,
     getExportLogs,
-    SECCIONES_VALIDAS, } = require('../models/exportarBD');
+    SECCIONES_VALIDAS,
+} = require('../models/exportarBD');
 const {
     crearPermiso, getPermisosByEmpleado, getTodosPermisos,
     getPermisoById, responderPermiso, deletePermiso,
@@ -1850,18 +1853,42 @@ router.patch('/usuarios/cambiar-contrasena', authMiddleware, async (req, res) =>
     }
 });
 
-// Exportación general o por sección
+// Exportación general o por sección.
+// Soporta filtros:
+// GET /api/rh/exportar-bd?seccion=empleados&sucursalId=2&departamentoId=3
 router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
     try {
         const seccion = req.query.seccion || 'general';
-        const buffer = await generarExcelBD(seccion);
+
+        const filtros = {
+            sucursalId: req.query.sucursalId || null,
+            departamentoId: req.query.departamentoId || null,
+        };
+
+        const buffer = await generarExcelBD(seccion, filtros);
+
         await registrarLog(
             req.user?.usuarioId,
             req.user?.usuario,
             req.ip || req.headers['x-forwarded-for'] || null
         );
+
         const fecha = new Date().toISOString().split('T')[0];
-        const nombreArchivo = `DIAGSA_${String(seccion).toUpperCase()}_${fecha}.xlsx`;
+
+        const partes = [`DIAGSA_${String(seccion).toUpperCase()}`];
+
+        if (filtros.sucursalId && filtros.sucursalId !== 'todos') {
+            partes.push(`SUCURSAL_${filtros.sucursalId}`);
+        }
+
+        if (filtros.departamentoId && filtros.departamentoId !== 'todos') {
+            partes.push(`DEPTO_${filtros.departamentoId}`);
+        }
+
+        partes.push(fecha);
+
+        const nombreArchivo = `${partes.join('_')}.xlsx`;
+
         res.setHeader(
             'Content-Type',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -1870,6 +1897,7 @@ router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
             'Content-Disposition',
             `attachment; filename="${nombreArchivo}"`
         );
+
         res.send(buffer);
     } catch (error) {
         console.error('Error al exportar BD:', error);
@@ -1879,18 +1907,24 @@ router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
         });
     }
 });
-// Exportación de datos para contrato por empleado
-router.get('/rh/exportar-bd/contrato/:usuarioId', authMiddleware, async (req, res) => {
+
+// Exportación de expediente completo por empleado.
+// GET /api/rh/exportar-bd/empleado/:usuarioId
+router.get('/rh/exportar-bd/empleado/:usuarioId', authMiddleware, async (req, res) => {
     try {
         const { usuarioId } = req.params;
-        const buffer = await generarExcelContrato(usuarioId);
+
+        const buffer = await generarExcelEmpleadoCompleto(usuarioId);
+
         await registrarLog(
             req.user?.usuarioId,
             req.user?.usuario,
             req.ip || req.headers['x-forwarded-for'] || null
         );
+
         const fecha = new Date().toISOString().split('T')[0];
-        const nombreArchivo = `DIAGSA_CONTRATO_${usuarioId}_${fecha}.xlsx`;
+        const nombreArchivo = `DIAGSA_EXPEDIENTE_EMPLEADO_${usuarioId}_${fecha}.xlsx`;
+
         res.setHeader(
             'Content-Type',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -1899,6 +1933,42 @@ router.get('/rh/exportar-bd/contrato/:usuarioId', authMiddleware, async (req, re
             'Content-Disposition',
             `attachment; filename="${nombreArchivo}"`
         );
+
+        res.send(buffer);
+    } catch (error) {
+        console.error('Error al exportar expediente de empleado:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Error al exportar expediente del empleado',
+        });
+    }
+});
+
+// Exportación de datos para contrato por empleado.
+router.get('/rh/exportar-bd/contrato/:usuarioId', authMiddleware, async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+
+        const buffer = await generarExcelContrato(usuarioId);
+
+        await registrarLog(
+            req.user?.usuarioId,
+            req.user?.usuario,
+            req.ip || req.headers['x-forwarded-for'] || null
+        );
+
+        const fecha = new Date().toISOString().split('T')[0];
+        const nombreArchivo = `DIAGSA_CONTRATO_${usuarioId}_${fecha}.xlsx`;
+
+        res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${nombreArchivo}"`
+        );
+
         res.send(buffer);
     } catch (error) {
         console.error('Error al exportar contrato:', error);
@@ -1908,9 +1978,11 @@ router.get('/rh/exportar-bd/contrato/:usuarioId', authMiddleware, async (req, re
         });
     }
 });
+
 router.get('/rh/exportar-bd/logs', authMiddleware, async (req, res) => {
     try {
         const logs = await getExportLogs();
+
         res.json({
             success: true,
             data: logs,
