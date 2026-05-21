@@ -616,11 +616,14 @@ function calcularDiasVacacionesLFT(fechaContratacion) {
     if (años === 2) return 14;
     if (años === 3) return 16;
     if (años === 4) return 18;
-    if (años <= 9) return 20;
-    if (años <= 14) return 22;
-    if (años <= 19) return 24;
-    if (años <= 24) return 26;
-    return 28;
+    if (años === 5) return 20;
+    if (años >= 6 && años <= 10) return 22;
+    if (años >= 11 && años <= 15) return 24;
+    if (años >= 16 && años <= 20) return 26;
+    if (años >= 21 && años <= 25) return 28;
+    if (años >= 26 && años <= 30) return 30;
+
+    return 30;
 }
 /**
  * Obtiene los días de vacaciones que le corresponden
