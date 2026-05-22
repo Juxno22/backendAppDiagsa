@@ -113,6 +113,12 @@ const {
     asignarSubordinadosAGerente,
     eliminarSubordinadoDeGerente,
 } = require('../models/gerentesSubordinados');
+const {
+    crearQuejaSugerencia,
+    consultarQuejaPorFolio,
+    getQuejasSugerenciasRH,
+    updateQuejaSugerenciaRH,
+} = require('../models/quejasSugerencias');
 
 const query = (sql, values = []) =>
     new Promise((resolve, reject) => {
@@ -3114,6 +3120,74 @@ router.get('/gerente/mis-subordinados', authMiddleware, async (req, res) => {
         return res.status(500).json({
             success: false,
             message: error.message || 'Error al obtener subordinados del gerente',
+        });
+    }
+});
+
+router.post('/quejas-sugerencias', async (req, res) => {
+    try {
+        const result = await crearQuejaSugerencia(req.body, req.user || null);
+        return res.status(result.success ? 201 : 400).json(result);
+    } catch (error) {
+        console.error('[POST /quejas-sugerencias]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al registrar queja/sugerencia',
+        });
+    }
+});
+
+router.get('/quejas-sugerencias/folio/:folio', async (req, res) => {
+    try {
+        const result = await consultarQuejaPorFolio(req.params.folio);
+        return res.status(result.success ? 200 : 404).json(result);
+    } catch (error) {
+        console.error('[GET /quejas-sugerencias/folio/:folio]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al consultar folio',
+        });
+    }
+});
+
+// RH / RHAdmin
+router.get('/rh/quejas-sugerencias', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const data = await getQuejasSugerenciasRH(req, {
+            estado: req.query.estado,
+            sucursalId: req.query.sucursalId,
+            departamentoId: req.query.departamentoId,
+            q: req.query.q,
+        });
+
+        return res.json({
+            success: true,
+            data,
+            total: data.length,
+        });
+    } catch (error) {
+        console.error('[GET /rh/quejas-sugerencias]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al consultar quejas/sugerencias',
+        });
+    }
+});
+
+router.patch('/rh/quejas-sugerencias/:id', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const result = await updateQuejaSugerenciaRH(
+            Number(req.params.id),
+            req.body,
+            req.user
+        );
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error('[PATCH /rh/quejas-sugerencias/:id]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al actualizar queja/sugerencia',
         });
     }
 });

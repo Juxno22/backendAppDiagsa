@@ -1,0 +1,367 @@
+// backend/src/models/quejasSugerencias.js
+const connection = require('../config/connection');
+const { construirFiltroAccesoUsuarios } = require('../utils/accesos');
+
+const query = (sql, values = []) =>
+    new Promise((resolve, reject) => {
+        connection.query(sql, values, (error, results) => {
+            if (error) reject(error);
+            else resolve(results);
+        });
+    });
+
+const AREAS_VALIDAS = [
+    'Ventas mostrador',
+    'Telemarketing',
+    'Almacen',
+    'Reparto',
+    'Contabilidad',
+    'Sistemas',
+    'Mercadotecnia',
+    'Otros',
+];
+
+const CATEGORIAS_VALIDAS = [
+    'Ambiente laboral',
+    'Procesos y operaciones',
+    'Comunicación interna',
+    'Instalaciones',
+    'Sugerencias de mejora',
+    'Reconocimientos / Felicitaciones',
+    'Otros',
+];
+
+const ESTADOS_VALIDOS = [
+    'recibida',
+    'en_revision',
+    'en_proceso',
+    'resuelta',
+    'cerrada',
+    'descartada',
+];
+
+const PRIORIDADES_VALIDAS = ['baja', 'media', 'alta'];
+
+function normalizarTexto(valor) {
+    return String(valor || '').trim();
+}
+
+function generarFolio() {
+    const fecha = new Date();
+    const y = fecha.getFullYear();
+    const m = String(fecha.getMonth() + 1).padStart(2, '0');
+    const d = String(fecha.getDate()).padStart(2, '0');
+    const random = Math.random().toString(36).slice(2, 8).toUpperCase();
+
+    return `QS-${y}${m}${d}-${random}`;
+}
+
+async function generarFolioUnico() {
+    for (let i = 0; i < 5; i += 1) {
+        const folio = generarFolio();
+        const existe = await query(
+            'SELECT quejaSugerenciaId FROM quejas_sugerencias WHERE folio = ? LIMIT 1',
+            [folio]
+        );
+
+        if (existe.length === 0) return folio;
+    }
+
+    return `QS-${Date.now()}`;
+}
+
+async function crearQuejaSugerencia(data = {}, usuarioLogueado = null) {
+    const anonimo = data.anonimo === true || data.anonimo === 1 || data.anonimo === '1';
+
+    const nombre = anonimo ? null : normalizarTexto(data.nombre);
+    const usuarioId = anonimo ? null : (data.usuarioId || usuarioLogueado?.usuarioId || null);
+
+    const sucursalId = data.sucursalId ? Number(data.sucursalId) : null;
+    const departamentoId = data.departamentoId ? Number(data.departamentoId) : null;
+
+    const sucursalTexto = normalizarTexto(data.sucursal_texto || data.sucursalTexto);
+    const departamentoTexto = normalizarTexto(data.departamento_texto || data.departamentoTexto);
+
+    const area = normalizarTexto(data.area);
+    const areaOtro = normalizarTexto(data.area_otro || data.areaOtro);
+    const categoria = normalizarTexto(data.categoria);
+    const categoriaOtro = normalizarTexto(data.categoria_otro || data.categoriaOtro);
+    const descripcion = normalizarTexto(data.descripcion);
+
+    if (!anonimo && !nombre && !usuarioId) {
+        return {
+            success: false,
+            message: 'Escribe tu nombre o marca la opción anónima',
+        };
+    }
+
+    if (!area) {
+        return { success: false, message: 'Selecciona el área' };
+    }
+
+    if (!AREAS_VALIDAS.includes(area)) {
+        return { success: false, message: 'Área inválida' };
+    }
+
+    if (area === 'Otros' && !areaOtro) {
+        return { success: false, message: 'Especifica el área en Otros' };
+    }
+
+    if (!categoria) {
+        return { success: false, message: 'Selecciona la categoría' };
+    }
+
+    if (!CATEGORIAS_VALIDAS.includes(categoria)) {
+        return { success: false, message: 'Categoría inválida' };
+    }
+
+    if (categoria === 'Otros' && !categoriaOtro) {
+        return { success: false, message: 'Especifica la categoría en Otros' };
+    }
+
+    if (!descripcion || descripcion.length < 10) {
+        return {
+            success: false,
+            message: 'Describe tu comentario con al menos 10 caracteres',
+        };
+    }
+
+    if (!sucursalId && !sucursalTexto) {
+        return {
+            success: false,
+            message: 'Selecciona o escribe la sucursal',
+        };
+    }
+
+    if (!departamentoId && !departamentoTexto) {
+        return {
+            success: false,
+            message: 'Selecciona o escribe el departamento',
+        };
+    }
+
+    const folio = await generarFolioUnico();
+
+    const result = await query(
+        `
+        INSERT INTO quejas_sugerencias (
+            folio,
+            anonimo,
+            nombre,
+            usuarioId,
+            sucursalId,
+            departamentoId,
+            sucursal_texto,
+            departamento_texto,
+            area,
+            area_otro,
+            categoria,
+            categoria_otro,
+            descripcion,
+            estado,
+            prioridad
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recibida', 'media')
+        `,
+        [
+            folio,
+            anonimo ? 1 : 0,
+            nombre || null,
+            usuarioId || null,
+            sucursalId,
+            departamentoId,
+            sucursalTexto || null,
+            departamentoTexto || null,
+            area,
+            areaOtro || null,
+            categoria,
+            categoriaOtro || null,
+            descripcion,
+        ]
+    );
+
+    return {
+        success: true,
+        message: 'Comentario registrado correctamente',
+        folio,
+        quejaSugerenciaId: result.insertId,
+    };
+}
+
+async function consultarQuejaPorFolio(folio) {
+    const folioLimpio = normalizarTexto(folio).toUpperCase();
+
+    if (!folioLimpio) {
+        return { success: false, message: 'Ingresa el folio' };
+    }
+
+    const rows = await query(
+        `
+        SELECT
+            qs.folio,
+            qs.anonimo,
+            CASE WHEN qs.anonimo = 1 THEN 'ANÓNIMO' ELSE qs.nombre END AS nombre,
+            qs.area,
+            qs.area_otro,
+            qs.categoria,
+            qs.categoria_otro,
+            qs.estado,
+            qs.prioridad,
+            qs.respuesta_rh,
+            qs.createdAt,
+            qs.updatedAt,
+            COALESCE(s.nombre_sucursal, qs.sucursal_texto) AS sucursal,
+            COALESCE(d.nombre, qs.departamento_texto) AS departamento
+        FROM quejas_sugerencias qs
+        LEFT JOIN sucursales s ON qs.sucursalId = s.sucursalId
+        LEFT JOIN departamentos d ON qs.departamentoId = d.departamentoId
+        WHERE qs.folio = ?
+        LIMIT 1
+        `,
+        [folioLimpio]
+    );
+
+    if (rows.length === 0) {
+        return { success: false, message: 'No encontramos una queja/sugerencia con ese folio' };
+    }
+
+    return {
+        success: true,
+        data: rows[0],
+    };
+}
+
+async function getQuejasSugerenciasRH(req, filtros = {}) {
+    const filtroAcceso = await construirFiltroAccesoUsuarios(req);
+
+    const params = [...filtroAcceso.params];
+    const where = [filtroAcceso.where.replace(/^WHERE/i, '') || '1=1'];
+
+    if (filtros.estado && filtros.estado !== 'todos') {
+        where.push('qs.estado = ?');
+        params.push(filtros.estado);
+    }
+
+    if (filtros.sucursalId && filtros.sucursalId !== 'todos') {
+        where.push('qs.sucursalId = ?');
+        params.push(Number(filtros.sucursalId));
+    }
+
+    if (filtros.departamentoId && filtros.departamentoId !== 'todos') {
+        where.push('qs.departamentoId = ?');
+        params.push(Number(filtros.departamentoId));
+    }
+
+    if (filtros.q) {
+        where.push(`
+            (
+                qs.folio LIKE ?
+                OR qs.nombre LIKE ?
+                OR qs.descripcion LIKE ?
+                OR qs.area LIKE ?
+                OR qs.categoria LIKE ?
+            )
+        `);
+        const like = `%${filtros.q}%`;
+        params.push(like, like, like, like, like);
+    }
+
+    return await query(
+        `
+        SELECT
+            qs.quejaSugerenciaId,
+            qs.folio,
+            qs.anonimo,
+            CASE WHEN qs.anonimo = 1 THEN 'ANÓNIMO' ELSE qs.nombre END AS nombre,
+            qs.usuarioId,
+            qs.sucursalId,
+            qs.departamentoId,
+            COALESCE(s.nombre_sucursal, qs.sucursal_texto) AS sucursal,
+            COALESCE(d.nombre, qs.departamento_texto) AS departamento,
+            qs.area,
+            qs.area_otro,
+            qs.categoria,
+            qs.categoria_otro,
+            qs.descripcion,
+            qs.estado,
+            qs.prioridad,
+            qs.respuesta_rh,
+            qs.atendidoPor,
+            qs.atendidoAt,
+            qs.createdAt,
+            qs.updatedAt,
+            atendio.nombre AS atendio_nombre,
+            atendio.apPaterno AS atendio_apPaterno
+        FROM quejas_sugerencias qs
+        LEFT JOIN usuarios u ON qs.usuarioId = u.usuarioId
+        LEFT JOIN sucursales s ON qs.sucursalId = s.sucursalId
+        LEFT JOIN departamentos d ON qs.departamentoId = d.departamentoId
+        LEFT JOIN usuarios atendio ON qs.atendidoPor = atendio.usuarioId
+        WHERE ${where.join(' AND ')}
+        ORDER BY
+            FIELD(qs.estado, 'recibida', 'en_revision', 'en_proceso', 'resuelta', 'cerrada', 'descartada'),
+            FIELD(qs.prioridad, 'alta', 'media', 'baja'),
+            qs.createdAt DESC
+        `,
+        params
+    );
+}
+
+async function updateQuejaSugerenciaRH(id, data = {}, usuarioRH) {
+    const estado = data.estado || null;
+    const prioridad = data.prioridad || null;
+    const respuestaRH = normalizarTexto(data.respuesta_rh || data.respuestaRH);
+
+    if (estado && !ESTADOS_VALIDOS.includes(estado)) {
+        return { success: false, message: 'Estado inválido' };
+    }
+
+    if (prioridad && !PRIORIDADES_VALIDAS.includes(prioridad)) {
+        return { success: false, message: 'Prioridad inválida' };
+    }
+
+    const existe = await query(
+        'SELECT quejaSugerenciaId FROM quejas_sugerencias WHERE quejaSugerenciaId = ? LIMIT 1',
+        [id]
+    );
+
+    if (existe.length === 0) {
+        return { success: false, message: 'Registro no encontrado' };
+    }
+
+    await query(
+        `
+        UPDATE quejas_sugerencias
+        SET
+            estado = COALESCE(?, estado),
+            prioridad = COALESCE(?, prioridad),
+            respuesta_rh = COALESCE(?, respuesta_rh),
+            atendidoPor = ?,
+            atendidoAt = NOW()
+        WHERE quejaSugerenciaId = ?
+        `,
+        [
+            estado,
+            prioridad,
+            respuestaRH || null,
+            usuarioRH?.usuarioId || null,
+            id,
+        ]
+    );
+
+    return {
+        success: true,
+        message: 'Registro actualizado correctamente',
+    };
+}
+
+module.exports = {
+    AREAS_VALIDAS,
+    CATEGORIAS_VALIDAS,
+    ESTADOS_VALIDOS,
+    PRIORIDADES_VALIDAS,
+    crearQuejaSugerencia,
+    consultarQuejaPorFolio,
+    getQuejasSugerenciasRH,
+    updateQuejaSugerenciaRH,
+};
