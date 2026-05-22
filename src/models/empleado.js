@@ -319,6 +319,19 @@ async function updateEmpleado(usuarioId, datosNuevos) {
         }
         datosNuevos.celular = celular;
     }
+    // Calcular sueldo final cuando venga sueldo neto o compensación.
+    // sueldo_final = sueldo_neto + sueldo_compensacion
+    if (
+        datosNuevos.sueldo_neto !== undefined ||
+        datosNuevos.sueldo_compensacion !== undefined ||
+        datosNuevos.sueldo_final !== undefined
+    ) {
+        const sueldoNeto = Number(datosNuevos.sueldo_neto || 0);
+        const sueldoCompensacion = Number(datosNuevos.sueldo_compensacion || 0);
+
+        datosNuevos.sueldo_compensacion = sueldoCompensacion;
+        datosNuevos.sueldo_final = Math.round((sueldoNeto + sueldoCompensacion) * 100) / 100;
+    }
     const camposPermitidos = [
         "nombre", "apPaterno", "apMaterno",
         "puestoId", "tipoId", "sueldoId", "sueldo", "rolId",
@@ -330,6 +343,7 @@ async function updateEmpleado(usuarioId, datosNuevos) {
         "talla_playera", "talla_pantalon", "talla_calzado",
         "talla_faja", "talla_guantes",
         "sueldo_bruto", "fondo_ahorro", "sueldo_neto",
+        "sueldo_compensacion", "sueldo_final",
         "numero_cuenta", "clabe_interbancaria", "codigo_postal",
         "infonavit", "fonacot",
         "emergencia_nombre", "emergencia_telefono", "emergencia_parentesco",
@@ -606,22 +620,42 @@ async function getNotificacionesByEmpleado(usuarioId) {
  * @param {string} fechaContratacion - Fecha de contratación (YYYY-MM-DD)
  * @returns {number} Días de vacaciones correspondientes
  */
-function calcularDiasVacacionesLFT(fechaContratacion) {
-    const hoy = new Date();
+function calcularAniosServicio(fechaContratacion, fechaReferencia = new Date()) {
     const inicio = new Date(fechaContratacion);
-    const años = Math.floor((hoy - inicio) / (1000 * 60 * 60 * 24 * 365));
+    const hoy = new Date(fechaReferencia);
 
-    if (años < 1) return 0; // Menos de 1 año — sin derecho aún
-    if (años === 1) return 12;
-    if (años === 2) return 14;
-    if (años === 3) return 16;
-    if (años === 4) return 18;
-    if (años === 5) return 20;
-    if (años >= 6 && años <= 10) return 22;
-    if (años >= 11 && años <= 15) return 24;
-    if (años >= 16 && años <= 20) return 26;
-    if (años >= 21 && años <= 25) return 28;
-    if (años >= 26 && años <= 30) return 30;
+    let anios = hoy.getFullYear() - inicio.getFullYear();
+
+    const mesHoy = hoy.getMonth();
+    const diaHoy = hoy.getDate();
+    const mesInicio = inicio.getMonth();
+    const diaInicio = inicio.getDate();
+
+    const aunNoCumpleAniversario =
+        mesHoy < mesInicio ||
+        (mesHoy === mesInicio && diaHoy < diaInicio);
+
+    if (aunNoCumpleAniversario) {
+        anios -= 1;
+    }
+
+    return Math.max(0, anios);
+}
+
+function calcularDiasVacacionesLFT(fechaContratacion) {
+    const anios = calcularAniosServicio(fechaContratacion);
+
+    if (anios < 1) return 0;
+    if (anios === 1) return 12;
+    if (anios === 2) return 14;
+    if (anios === 3) return 16;
+    if (anios === 4) return 18;
+    if (anios === 5) return 20;
+    if (anios >= 6 && anios <= 10) return 22;
+    if (anios >= 11 && anios <= 15) return 24;
+    if (anios >= 16 && anios <= 20) return 26;
+    if (anios >= 21 && anios <= 25) return 28;
+    if (anios >= 26 && anios <= 30) return 30;
 
     return 30;
 }
@@ -663,7 +697,7 @@ async function getDiasVacacionesLFT(usuarioId) {
     const fechaContratacion = rows[0].fechaContratacion;
     const hoy = new Date();
     const inicio = new Date(fechaContratacion);
-    const años = Math.floor((hoy - inicio) / (1000 * 60 * 60 * 24 * 365));
+    const años = calcularAniosServicio(fechaContratacion, hoy);
     const dias = calcularDiasVacacionesLFT(fechaContratacion);
     /*
      * Calcular días ya usados en el periodo vacacional actual.
