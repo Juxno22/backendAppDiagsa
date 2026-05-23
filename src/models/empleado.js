@@ -889,7 +889,7 @@ async function deleteHijo(hijoId) {
 }
 
 //Operaciones para guardar uniformes en posecion del empleado
-async function getUniformesEmpleado(usuario){
+async function getUniformesEmpleado(usuarioId){
     return await query(
         `SELECT uniformeId, usuarioId, tipo, descripcion, talla, cantidad,
             fecha_entrega, observaciones, activo, createdAt, updateAt
