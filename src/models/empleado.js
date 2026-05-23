@@ -977,7 +977,7 @@ async function updateUniformeEmpleado(uniformeId, usuarioId, data = {}){
             talla = ?,
             cantidad = ?,
             fecha_entrega = ?,
-            observaciones = ?,
+            observaciones = ?
          WHERE uniformeId = ?
             AND usuarioId = ?
         `, [
