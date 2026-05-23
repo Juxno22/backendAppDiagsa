@@ -892,7 +892,7 @@ async function deleteHijo(hijoId) {
 async function getUniformesEmpleado(usuarioId){
     return await query(
         `SELECT uniformeId, usuarioId, tipo, descripcion, talla, cantidad,
-            fecha_entrega, observaciones, activo, createdAt, updateAt
+            fecha_entrega, observaciones, activo, createdAt, updatedAt
          FROM usuario_uniformes
          WHERE usuarioId = ?
             AND activo = 1
