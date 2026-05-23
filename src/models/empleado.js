@@ -926,7 +926,7 @@ async function addUniformeEmpleado(usuarioId, data = {}){
     }
 
     const result = await query(
-        `INSERT INTO usuario_uniforme (
+        `INSERT INTO usuario_uniformes (
             usuarioId, tipo, descripcion, talla,
             cantidad, fecha_entrega, observaciones
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
