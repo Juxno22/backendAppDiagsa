@@ -62,14 +62,12 @@ async function getEmpleadoById(usuarioId) {
         WHERE u.usuarioId = ?
         LIMIT 1
     `;
-    console.log('[getEmpleadoById] antes query principal');
     const rows = await query(sql, [usuarioId]);
-    console.log('[getEmpleadoById] despues query principal', rows.length);
     if (rows.length === 0) return null;
     const emp = rows[0];
     const dias = calcularDiasVacacionesLFT(emp.fechaContratacion);
     const diasRestantes = Math.max(0, dias - Number(emp.dias_usados || 0));
-    console.log('[getEmpleadoById] antes queries extra');
+    const uniformes = await getUniformesEmpleado(usuarioId);
     const [vehiculos, hijos, descuentos] = await Promise.all([
         query(`
             SELECT *
@@ -86,7 +84,6 @@ async function getEmpleadoById(usuarioId) {
         `, [emp.usuarioId]),
         getDescuentosByUsuario(emp.usuarioId, false)
     ]);
-    console.log('[getEmpleadoById] despues queries extra');
     return {
         ...emp,
         dias_vacaciones_lft: dias,
@@ -95,6 +92,7 @@ async function getEmpleadoById(usuarioId) {
         vehiculo: vehiculos?.[0] || null,
         hijos: hijos || [],
         descuentos: descuentos || [],
+        uniformes,
     };
 }
 /**
@@ -889,6 +887,151 @@ async function deleteHijo(hijoId) {
     await query('DELETE FROM hijos WHERE hijoId = ?', [hijoId]);
     return { success: true };
 }
+
+//Operaciones para guardar uniformes en posecion del empleado
+async function getUniformesEmpleado(usuario){
+    return await query(
+        `SELECT uniformeId, usuarioId, tipo, descripcion, talla, cantidad,
+            fecha_entrega, observaciones, activo, createdAt, updateAt
+         FROM usuario_uniformes
+         WHERE usuarioId = ?
+            AND activo = 1
+         ORDER BY
+            fecha_entrega DESC,
+            uniformeId DESC
+        `, [usuarioId]
+    );
+};
+
+async function addUniformeEmpleado(usuarioId, data = {}){
+    const tipo = String(data.tipo || '').trim().toUpperCase();
+    const descripcion = String(data.descripcion || '').trim().toUpperCase();
+    const talla = String(data.talla || '').trim().toUpperCase();
+    const cantidad = Number(data.cantidad || 0);
+    const fecha_entrega = data.fecha_entrega || null;
+    const observaciones = String(data.observaciones || '').trim().toUpperCase();
+
+    if(!tipo){
+        return {
+            success: false,
+            message: 'El tipo de uniforme es obligatorio',
+        }
+    }
+
+    if(!cantidad || cantidad <= 0){
+        return {
+            success: false,
+            message: 'La cantidad debe de ser mayor a 0',
+        }
+    }
+
+    const result = await query(
+        `INSERT INTO usuario_uniforme (
+            usuarioId, tipo, descripcion, talla,
+            cantidad, fecha_entrega, observaciones
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [
+            usuarioId,
+            tipo,
+            descripcion || null,
+            talla || null,
+            cantidad,
+            fecha_entrega || null,
+            observaciones || null,
+        ]
+    );
+
+    return {
+        success: true,
+        message: 'Uniforme agregado correctamente',
+        uniformeId: result.insertId,
+    };
+};
+
+async function updateUniformeEmpleado(uniformeId, usuarioId, data = {}){
+    const tipo = String(data.tipo || '').trim().toUpperCase();
+    const descripcion = String(data.descripcion || '').trim().toUpperCase();
+    const talla = String(data.talla || '').trim().toUpperCase();
+    const cantidad = Number(data.cantidad || 0);
+    const fecha_entrega = data.fecha_entrega || null;
+    const observaciones = String(data.observaciones || '').trim().toUpperCase();
+
+    if(!tipo){
+        return {
+            success: false,
+            message: 'El tipo de uniforme es obligatorio',
+        }
+    }
+
+    if(!cantidad || cantidad <= 0){
+        return { 
+            success: false,
+            message: 'La cantidad debe ser mayor a 0',
+        }
+    }
+
+    const result =  await query(
+        `UPDATE usuario_uniformes SET
+            tipo = ?,
+            descripcion = ?,
+            talla = ?,
+            cantidad = ?,
+            fecha_entrega = ?,
+            observaciones = ?,
+         WHERE uniformeId = ?
+            AND usuarioId = ?
+        `, [
+            tipo,
+            descripcion || null,
+            talla || null,
+            cantidad,
+            fecha_entrega || null,
+            observaciones || null,
+            uniformeId,
+            usuarioId,
+        ]
+    )
+
+    return {
+        success: true,
+        message: result.affectedRows > 0 ?  'Uniforme actualizado correctamente' : 'No se encontro el unifome',
+    };
+};
+
+async function deleteUniformeEmpleado(uniformeId, usuarioId){
+    const result = await query(
+        `UPDATE usuario_uniformes SET activo = 0,
+         WHERE uniformeId = ? AND usuarioId = ?
+        `, [uniformeId, usuarioId]
+    )
+
+    return {
+        success: true,
+        message: result.affectedRows > 0 ? 'Uniforme elimindado correctmente' : 'No se encontro el uniforme'
+    };
+};
+
+async function replaceUniformesEmpleado(usuarioId, uniformes = []){
+    await query(
+        `UPDATE usuario_uniformes SET activo = 0 WHERE usuarioId = ?
+        `, [usuarioId]
+    );
+
+    for( const item of uniformes){
+        const tipo = String(item.tipo || '').trim();
+        const cantidad = Number(item.cantidad || 0);
+
+        if(!tipo || cantidad <= 0) continue;
+
+        await addUniformeEmpleado(usuarioId, item);
+    }
+
+    return {
+        success: true,
+        message: 'Uniformes actualizados correctamente',
+    }
+};
+
 module.exports = {
     getEmpleadoById,
     getVacacionesByEmpleado,
@@ -908,4 +1051,9 @@ module.exports = {
     addHijo,
     deleteHijo,
     getAllEmpleadosPorAcceso,
+    getUniformesEmpleado,
+    addUniformeEmpleado,
+    updateUniformeEmpleado,
+    deleteUniformeEmpleado,
+    replaceUniformesEmpleado,
 };

@@ -74,7 +74,12 @@ const {
     getHijosByEmpleado,
     addHijo,
     deleteHijo,
-    getAllEmpleadosPorAcceso
+    getAllEmpleadosPorAcceso,
+    getUniformesEmpleado,
+    addUniformeEmpleado,
+    updateUniformeEmpleado,
+    deleteUniformeEmpleado,
+    replaceUniformesEmpleado
 } = require("../models/empleado");
 const {
     getSecciones,
@@ -3237,6 +3242,81 @@ router.patch('/rh/quejas-sugerencias/:id', authMiddleware, soloRH, async (req, r
         return res.status(500).json({
             success: false,
             message: error.message || 'Error al actualizar queja/sugerencia',
+        });
+    }
+});
+
+//Rutas para la asignacion de ccantidad de uniformes a cada empleado
+router.get('/rh/empleados/:id/uniformes', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const usuarioId = Number(req.params.id);
+
+        const data = await getUniformesEmpleado(usuarioId);
+
+        return res.json({
+            success: true,
+            data,
+            total: data.length,
+        });
+    } catch (error) {
+        console.error('[GET /rh/empleados/:id/uniformes]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener uniformes',
+        });
+    }
+});
+
+router.post('/rh/empleados/:id/uniformes', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const usuarioId = Number(req.params.id);
+
+        const result = await addUniformeEmpleado(usuarioId, req.body);
+
+        return res.status(result.success ? 201 : 400).json(result);
+    } catch (error) {
+        console.error('[POST /rh/empleados/:id/uniformes]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al agregar uniforme',
+        });
+    }
+});
+
+router.put('/rh/empleados/:id/uniformes/:uniformeId', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const usuarioId = Number(req.params.id);
+        const uniformeId = Number(req.params.uniformeId);
+
+        const result = await updateUniformeEmpleado(uniformeId, usuarioId, req.body);
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error('[PUT /rh/empleados/:id/uniformes/:uniformeId]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al actualizar uniforme',
+        });
+    }
+});
+
+router.delete('/rh/empleados/:id/uniformes/:uniformeId', authMiddleware, soloRH, async (req, res) => {
+    try {
+        const usuarioId = Number(req.params.id);
+        const uniformeId = Number(req.params.uniformeId);
+
+        const result = await deleteUniformeEmpleado(uniformeId, usuarioId);
+
+        return res.json(result);
+    } catch (error) {
+        console.error('[DELETE /rh/empleados/:id/uniformes/:uniformeId]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al eliminar uniforme',
         });
     }
 });
