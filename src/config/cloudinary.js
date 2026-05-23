@@ -63,31 +63,37 @@ async function subirImagen(buffer, folder = 'diagsa_empleados', publicId) {
 }
 
 /**
- * Subir una imagen de evidencia ppara quejas y sugerencias
+ * Sube una imagen de evidencia para quejas/sugerencias.
  */
-async function subirImagenEvidencia(buffer, folder = 'diagsa_quejas_sugerencias', publicId){
-    return new Promise((resolve, reject)=>{
-        const stream = cloudinary.uploader.upload_stream({
-            resource_type: 'image',
-            folder,
-            public_id: publicId,
-            overwrite: true,
-            transformation: [
-                {with: 1600, height: 1600, crop: 'limit'},
-                {quality: 'auto', fetch_format: 'auto'},
-            ],
-        }, (error, result)=>{
-            if(error) reject(error);
-            else{
+async function subirImagenEvidencia(buffer, folder = 'diagsa_quejas_sugerencias', publicId) {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                resource_type: 'image',
+                folder,
+                public_id: publicId,
+                overwrite: true,
+                transformation: [
+                    { width: 1600, height: 1600, crop: 'limit' },
+                    { quality: 'auto', fetch_format: 'auto' },
+                ],
+            },
+            (error, result) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
                 resolve({
-                    url: resolve.secure_url,
+                    url: result.secure_url,
+                    secure_url: result.secure_url,
                     public_id: result.public_id,
-                })
+                });
             }
-        })
+        );
         stream.end(buffer);
-    })
-};
+    });
+}
 /**
  * Sube un PDF a Cloudinary como raw.
  */
