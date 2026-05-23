@@ -6,9 +6,7 @@ const { authMiddleware, soloSupervisor, soloRH,
     soloMandos, soloRHAdmin, puedeVerDepartamento,
     ROL_RHADMIN, ROL_RH, ROL_SUPERVISOR,
     ROL_GERENTE, ROL_COLABORADOR, } = require("../middlewares/auth");
-const { upload, subirImagen } = require("../config/cloudinary");
-const { uploadPDF, subirPDF } = require('../config/cloudinary');
-const { subirImagenEvidencia } = require('../config/cloudinary');
+const { upload, subirImagen, uploadPDF, subirPDF, subirImagenEvidencia } = require("../config/cloudinary");
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
 const {
@@ -3127,6 +3125,13 @@ router.get('/gerente/mis-subordinados', authMiddleware, async (req, res) => {
 
 router.post('/quejas-sugerencias', upload.single('foto'), async (req, res) => {
     try {
+        console.log('[POST /quejas-sugerencias] body:', req.body);
+        console.log('[POST /quejas-sugerencias] file:', req.file ? {
+            fieldname: req.file.fieldname,
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+        } : null);
         if (!req.file) {
             return res.status(400).json({
                 success: false,
@@ -3134,6 +3139,7 @@ router.post('/quejas-sugerencias', upload.single('foto'), async (req, res) => {
             });
         }
         const publicId = `queja_${Date.now()}`;
+
         const imagen = await subirImagenEvidencia(
             req.file.buffer,
             'diagsa_quejas_sugerencias',
