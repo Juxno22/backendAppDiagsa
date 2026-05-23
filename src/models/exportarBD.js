@@ -19,6 +19,8 @@ const SECCIONES_VALIDAS = [
     'vacantes',
     'cumpleanos',
     'descuentos',
+    'uniformes',
+    'quejas_sugerencias',
     'documentos_empleado',
     'documentos_rh',
 ];
@@ -61,6 +63,32 @@ function filtrosUsuarioSQL(alias = 'u', filtros = {}) {
     if (f.departamentoId) {
         where.push(`${alias}.departamentoId = ?`);
         values.push(f.departamentoId);
+    }
+
+    return {
+        where: where.length ? ` AND ${where.join(' AND ')}` : '',
+        values,
+    };
+}
+
+function filtrosQuejasSugerenciasSQL(filtros = {}) {
+    const f = normalizarFiltros(filtros);
+    const where = [];
+    const values = [];
+
+    if (f.usuarioId) {
+        where.push('qs.usuarioId = ?');
+        values.push(f.usuarioId);
+    }
+
+    if (f.sucursalId) {
+        where.push('(qs.sucursalId = ? OR u.sucursalId = ?)');
+        values.push(f.sucursalId, f.sucursalId);
+    }
+
+    if (f.departamentoId) {
+        where.push('(qs.departamentoId = ? OR u.departamentoId = ?)');
+        values.push(f.departamentoId, f.departamentoId);
     }
 
     return {
@@ -839,6 +867,148 @@ async function agregarHojaDescuentos(wb, filtros = {}) {
     }
 }
 
+
+async function agregarHojaUniformes(wb, filtros = {}) {
+    const ws = wb.addWorksheet('Uniformes');
+    ws.columns = [
+        { width: 8 }, { width: 28 }, { width: 18 }, { width: 18 }, { width: 22 },
+        { width: 12 }, { width: 20 }, { width: 18 }, { width: 12 }, { width: 16 },
+        { width: 34 }, { width: 18 }, { width: 18 },
+    ];
+
+    addHeader(ws, [
+        'ID Empleado', 'Empleado', 'Sucursal', 'Departamento', 'Puesto',
+        'Uniforme ID', 'Tipo', 'Color / Modelo', 'Talla', 'Cantidad',
+        'Observaciones', 'Fecha Entrega', 'Fecha Registro',
+    ], fillBlue);
+
+    const f = filtrosUsuarioSQL('u', filtros);
+
+    const uniformes = await query(`
+        SELECT
+            ue.uniformeId,
+            ue.usuarioId,
+            ue.tipo,
+            ue.descripcion,
+            ue.talla,
+            ue.cantidad,
+            ue.fecha_entrega,
+            ue.observaciones,
+            ue.createdAt,
+            u.nombre,
+            u.apPaterno,
+            u.apMaterno,
+            s.nombre_sucursal,
+            COALESCE(d.nombre, u.departamento) AS nombre_departamento,
+            p.nombre_puesto
+        FROM usuario_uniformes ue
+        LEFT JOIN usuarios u ON ue.usuarioId = u.usuarioId
+        LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
+        LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
+        LEFT JOIN puesto p ON u.puestoId = p.puestoId
+        WHERE COALESCE(ue.activo, 1) = 1
+        ${f.where}
+        ORDER BY s.nombre_sucursal, nombre_departamento, u.apPaterno, u.nombre, ue.fecha_entrega DESC, ue.uniformeId DESC
+    `, f.values);
+
+    for (const u of uniformes) {
+        addStyledRow(ws, [
+            u.usuarioId,
+            nombreCompleto(u),
+            u.nombre_sucursal,
+            u.nombre_departamento,
+            u.nombre_puesto,
+            u.uniformeId,
+            u.tipo,
+            u.descripcion,
+            u.talla,
+            u.cantidad ? Number(u.cantidad) : '',
+            u.observaciones,
+            fmtDate(u.fecha_entrega),
+            fmtDateTime(u.createdAt),
+        ]);
+    }
+}
+
+async function agregarHojaQuejasSugerencias(wb, filtros = {}) {
+    const ws = wb.addWorksheet('Quejas y Sugerencias');
+    ws.columns = [
+        { width: 8 }, { width: 18 }, { width: 28 }, { width: 18 }, { width: 18 },
+        { width: 20 }, { width: 22 }, { width: 22 }, { width: 16 }, { width: 14 },
+        { width: 50 }, { width: 70 }, { width: 30 }, { width: 70 }, { width: 18 },
+        { width: 24 }, { width: 24 },
+    ];
+
+    addHeader(ws, [
+        'ID', 'Folio', 'Nombre', 'Sucursal', 'Departamento',
+        'Área', 'Área Otro', 'Categoría', 'Estado', 'Prioridad',
+        'Descripción', 'Foto URL', 'Public ID', 'Respuesta RH', 'Atendido Por',
+        'Fecha Registro', 'Fecha Actualización',
+    ], fillBlue);
+
+    const f = filtrosQuejasSugerenciasSQL(filtros);
+
+    const registros = await query(`
+        SELECT
+            qs.quejaSugerenciaId,
+            qs.folio,
+            qs.anonimo,
+            qs.nombre,
+            qs.usuarioId,
+            qs.area,
+            qs.area_otro,
+            qs.categoria,
+            qs.categoria_otro,
+            qs.descripcion,
+            qs.foto_url,
+            qs.foto_public_id,
+            qs.estado,
+            qs.prioridad,
+            qs.respuesta_rh,
+            qs.createdAt,
+            qs.updatedAt,
+            qs.atendidoAt,
+            COALESCE(s.nombre_sucursal, qs.sucursal_texto) AS nombre_sucursal,
+            COALESCE(d.nombre, qs.departamento_texto) AS nombre_departamento,
+            u.nombre AS nombre_empleado,
+            u.apPaterno,
+            u.apMaterno,
+            atendio.usuario AS atendido_por_usuario
+        FROM quejas_sugerencias qs
+        LEFT JOIN usuarios u ON qs.usuarioId = u.usuarioId
+        LEFT JOIN sucursales s ON qs.sucursalId = s.sucursalId
+        LEFT JOIN departamentos d ON qs.departamentoId = d.departamentoId
+        LEFT JOIN usuarios atendio ON qs.atendidoPor = atendio.usuarioId
+        WHERE 1 = 1
+        ${f.where}
+        ORDER BY qs.createdAt DESC
+    `, f.values);
+
+    for (const q of registros) {
+        const nombre = q.anonimo ? 'ANÓNIMO' : (q.nombre || nombreCompleto(q));
+
+        addStyledRow(ws, [
+            q.quejaSugerenciaId,
+            q.folio,
+            nombre,
+            q.nombre_sucursal,
+            q.nombre_departamento,
+            q.area,
+            q.area_otro,
+            q.categoria_otro || q.categoria,
+            q.estado,
+            q.prioridad,
+            q.descripcion,
+            q.foto_url,
+            q.foto_public_id,
+            q.respuesta_rh,
+            q.atendido_por_usuario,
+            fmtDateTime(q.createdAt),
+            fmtDateTime(q.updatedAt),
+        ]);
+    }
+}
+
 async function agregarHojaDocumentosEmpleado(wb, filtros = {}) {
     const ws = wb.addWorksheet('Documentos Empleado');
     ws.columns = [
@@ -1094,6 +1264,8 @@ async function generarExcelBD(seccion = 'general', filtros = {}) {
         await agregarHojaVacantes(wb, filtrosNormalizados);
         await agregarHojaCumpleanos(wb, filtrosNormalizados);
         await agregarHojaDescuentos(wb, filtrosNormalizados);
+        await agregarHojaUniformes(wb, filtrosNormalizados);
+        await agregarHojaQuejasSugerencias(wb, filtrosNormalizados);
         await agregarHojaDocumentosEmpleado(wb, filtrosNormalizados);
         await agregarHojaDocumentosRH(wb, filtrosNormalizados);
         await agregarHojaLogs(wb);
@@ -1111,6 +1283,8 @@ async function generarExcelBD(seccion = 'general', filtros = {}) {
     if (normalizada === 'vacantes') await agregarHojaVacantes(wb, filtrosNormalizados);
     if (normalizada === 'cumpleanos') await agregarHojaCumpleanos(wb, filtrosNormalizados);
     if (normalizada === 'descuentos') await agregarHojaDescuentos(wb, filtrosNormalizados);
+    if (normalizada === 'uniformes') await agregarHojaUniformes(wb, filtrosNormalizados);
+    if (normalizada === 'quejas_sugerencias') await agregarHojaQuejasSugerencias(wb, filtrosNormalizados);
     if (normalizada === 'documentos_empleado') await agregarHojaDocumentosEmpleado(wb, filtrosNormalizados);
     if (normalizada === 'documentos_rh') await agregarHojaDocumentosRH(wb, filtrosNormalizados);
 
@@ -1140,6 +1314,7 @@ async function generarExcelEmpleadoCompleto(usuarioId) {
     await agregarHojaVacantes(wb, filtros);
     await agregarHojaCumpleanos(wb, filtros);
     await agregarHojaDescuentos(wb, filtros);
+    await agregarHojaUniformes(wb, filtros);
     await agregarHojaDocumentosEmpleado(wb, filtros);
     await agregarHojaDocumentosRH(wb, filtros);
 
