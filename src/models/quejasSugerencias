@@ -232,7 +232,6 @@ async function consultarQuejaPorFolio(folio) {
             qs.estado,
             qs.prioridad,
             qs.respuesta_rh,
-            qs.fotp_url,
             qs.createdAt,
             qs.updatedAt,
             COALESCE(s.nombre_sucursal, qs.sucursal_texto) AS sucursal,
