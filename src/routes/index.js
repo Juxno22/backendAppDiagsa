@@ -3132,12 +3132,14 @@ router.post('/quejas-sugerencias', upload.single('foto'), async (req, res) => {
             mimetype: req.file.mimetype,
             size: req.file.size,
         } : null);
+
         if (!req.file) {
             return res.status(400).json({
                 success: false,
                 message: 'La foto es obligatoria para registrar una queja o sugerencia',
             });
         }
+
         const publicId = `queja_${Date.now()}`;
 
         const imagen = await subirImagenEvidencia(
@@ -3145,21 +3147,38 @@ router.post('/quejas-sugerencias', upload.single('foto'), async (req, res) => {
             'diagsa_quejas_sugerencias',
             publicId
         );
+
+        console.log('[POST /quejas-sugerencias] imagen cloudinary:', imagen);
+
+        const fotoUrl = typeof imagen === 'string'
+            ? imagen
+            : imagen?.url || imagen?.secure_url;
+
+        const fotoPublicId = typeof imagen === 'string'
+            ? publicId
+            : imagen?.public_id || publicId;
+
+        const payloadQueja = {
+            ...req.body,
+            anonimo:
+                req.body.anonimo === true ||
+                req.body.anonimo === 'true' ||
+                req.body.anonimo === '1',
+            foto_url: fotoUrl,
+            foto_public_id: fotoPublicId,
+        };
+
+        console.log('[POST /quejas-sugerencias] payload modelo:', payloadQueja);
+
         const result = await crearQuejaSugerencia(
-            {
-                ...req.body,
-                anonimo:
-                    req.body.anonimo === true ||
-                    req.body.anonimo === 'true' ||
-                    req.body.anonimo === '1',
-                foto_url: imagen.url,
-                foto_public_id: imagen.public_id,
-            },
+            payloadQueja,
             req.user || null
         );
+
         return res.status(result.success ? 201 : 400).json(result);
     } catch (error) {
         console.error('[POST /quejas-sugerencias]', error);
+
         return res.status(500).json({
             success: false,
             message: error.message || 'Error al registrar queja/sugerencia',

@@ -87,14 +87,25 @@ async function crearQuejaSugerencia(data = {}, usuarioLogueado = null) {
     const categoria = normalizarTexto(data.categoria);
     const categoriaOtro = normalizarTexto(data.categoria_otro || data.categoriaOtro);
     const descripcion = normalizarTexto(data.descripcion);
-    const fotoUrl = normalizarTexto(data.foto_url || data.fotoUrl);
-    const fotoPublicId = normalizarTexto(data.foto_ppublic_id || data.fotoPublicId);
+    const fotoUrl = normalizarTexto(
+        data.foto_url ||
+        data.fotoUrl ||
+        data.fotoURL ||
+        data.secure_url
+    );
+    const fotoPublicId = normalizarTexto(
+        data.foto_public_id ||
+        data.fotoPublicId ||
+        data.public_id
+    );
 
-    if(!fotoUrl){
-        return{
+    if (!fotoUrl) {
+        console.log('[crearQuejaSugerencia] data recibido sin foto_url:', data);
+
+        return {
             success: false,
-            message: 'La foto es obligatoria para registrar una queja o sugerencia.'
-        }
+            message: 'La foto es obligatoria para registrar una queja o sugerencia.',
+        };
     }
 
     if (!anonimo && !nombre && !usuarioId) {
