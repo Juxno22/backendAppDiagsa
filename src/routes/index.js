@@ -8,7 +8,7 @@ const { authMiddleware, soloSupervisor, soloRH,
     ROL_GERENTE, ROL_COLABORADOR, } = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
 const { uploadPDF, subirPDF } = require('../config/cloudinary');
-const { upload, subirImagenEvidencia } = require('../config/cloudinary');
+const { subirImagenEvidencia } = require('../config/cloudinary');
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
 const {
