@@ -87,6 +87,15 @@ async function crearQuejaSugerencia(data = {}, usuarioLogueado = null) {
     const categoria = normalizarTexto(data.categoria);
     const categoriaOtro = normalizarTexto(data.categoria_otro || data.categoriaOtro);
     const descripcion = normalizarTexto(data.descripcion);
+    const fotoUrl = normalizarTexto(data.foto_url || data.fotoUrl);
+    const fotoPublicId = normalizarTexto(data.foto_ppublic_id || data.fotoPublicId);
+
+    if(!fotoUrl){
+        return{
+            success: false,
+            message: 'La foto es obligatoria para registrar una queja o sugerencia.'
+        }
+    }
 
     if (!anonimo && !nombre && !usuarioId) {
         return {
@@ -158,10 +167,12 @@ async function crearQuejaSugerencia(data = {}, usuarioLogueado = null) {
             categoria,
             categoria_otro,
             descripcion,
+            foto_url,
+            foto_public_id,
             estado,
             prioridad
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recibida', 'media')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recibida', 'media')
         `,
         [
             folio,
@@ -177,6 +188,8 @@ async function crearQuejaSugerencia(data = {}, usuarioLogueado = null) {
             categoria,
             categoriaOtro || null,
             descripcion,
+            fotoUrl,
+            fotoPublicId || null,
         ]
     );
 
@@ -208,6 +221,7 @@ async function consultarQuejaPorFolio(folio) {
             qs.estado,
             qs.prioridad,
             qs.respuesta_rh,
+            qs.fotp_url,
             qs.createdAt,
             qs.updatedAt,
             COALESCE(s.nombre_sucursal, qs.sucursal_texto) AS sucursal,
@@ -286,6 +300,7 @@ async function getQuejasSugerenciasRH(req, filtros = {}) {
             qs.estado,
             qs.prioridad,
             qs.respuesta_rh,
+            qs.foto_url,
             qs.atendidoPor,
             qs.atendidoAt,
             qs.createdAt,

@@ -8,6 +8,7 @@ const { authMiddleware, soloSupervisor, soloRH,
     ROL_GERENTE, ROL_COLABORADOR, } = require("../middlewares/auth");
 const { upload, subirImagen } = require("../config/cloudinary");
 const { uploadPDF, subirPDF } = require('../config/cloudinary');
+const { upload, subirImagenEvidencia } = require('../config/cloudinary');
 const { generarWordEvaluacion } = require("../models/generarWordEvaluacion");
 const { generarWordPermiso } = require('../models/generarWordPermiso');
 const {
@@ -3124,9 +3125,32 @@ router.get('/gerente/mis-subordinados', authMiddleware, async (req, res) => {
     }
 });
 
-router.post('/quejas-sugerencias', async (req, res) => {
+router.post('/quejas-sugerencias', upload.single('foto'), async (req, res) => {
     try {
-        const result = await crearQuejaSugerencia(req.body, req.user || null);
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'La foto es obligatoria para registrar una queja o sugerencia',
+            });
+        }
+        const publicId = `queja_${Date.now()}`;
+        const imagen = await subirImagenEvidencia(
+            req.file.buffer,
+            'diagsa_quejas_sugerencias',
+            publicId
+        );
+        const result = await crearQuejaSugerencia(
+            {
+                ...req.body,
+                anonimo:
+                    req.body.anonimo === true ||
+                    req.body.anonimo === 'true' ||
+                    req.body.anonimo === '1',
+                foto_url: imagen.url,
+                foto_public_id: imagen.public_id,
+            },
+            req.user || null
+        );
         return res.status(result.success ? 201 : 400).json(result);
     } catch (error) {
         console.error('[POST /quejas-sugerencias]', error);
