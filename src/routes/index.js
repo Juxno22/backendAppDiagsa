@@ -1635,13 +1635,30 @@ router.get('/rh/permisos', authMiddleware, async (req, res) => {
 // RH responde permiso
 router.patch('/rh/permisos/:id/responder', authMiddleware, async (req, res) => {
     try {
-        const { estado } = req.body;
-        if (!['autorizado', 'rechazado'].includes(estado))
-            return res.status(400).json({ success: false, message: 'Estado inválido' });
-        const result = await responderPermiso(Number(req.params.id), estado);
+        const { estado, goce_sueldo } = req.body;
+        if (!['autorizado', 'rechazado'].includes(estado)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Estado inválido',
+            });
+        }
+        if (estado === 'autorizado' && !['con_goce', 'sin_goce', 'repone_tiempo'].includes(goce_sueldo)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Selecciona el tipo de permiso',
+            });
+        }
+        const result = await responderPermiso(
+            Number(req.params.id),
+            estado,
+            estado === 'autorizado' ? goce_sueldo : null
+        );
         res.json(result);
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
     }
 });
 

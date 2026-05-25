@@ -107,12 +107,43 @@ async function getPermisoById(permisoId) {
     return rows[0] || null;
 }
 
-async function responderPermiso(permisoId, estado) {
-    await query(
-        'UPDATE permisos SET estado = ? WHERE permisoId = ?',
-        [estado, permisoId]
+async function responderPermiso(id, estado, goce_sueldo = null) {
+    if (!['autorizado', 'rechazado'].includes(estado)) {
+        return {
+            success: false,
+            message: 'Estado inválido',
+        };
+    }
+    if (estado === 'autorizado' && !['con_goce', 'sin_goce', 'repone_tiempo'].includes(goce_sueldo)) {
+        return {
+            success: false,
+            message: 'Selecciona el tipo de permiso',
+        };
+    }
+    const result = await query(
+        `
+        UPDATE permisos
+        SET
+            estado = ?,
+            goce_sueldo = CASE
+                WHEN ? = 'autorizado' THEN ?
+                ELSE goce_sueldo
+            END
+        WHERE permisoId = ?
+        `,
+        [
+            estado,
+            estado,
+            goce_sueldo,
+            id,
+        ]
     );
-    return { success: true };
+    return {
+        success: result.affectedRows > 0,
+        message: result.affectedRows > 0
+            ? 'Permiso actualizado correctamente'
+            : 'Permiso no encontrado',
+    };
 }
 
 async function deletePermiso(permisoId) {
