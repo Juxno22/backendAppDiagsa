@@ -140,7 +140,10 @@ function sumarDiasYYYYMMDD(dias) {
  */
 async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacacionesId) {
     if (new Date(fechaInicio) > new Date(fechaFin)) {
-        return { success: false, message: 'La fecha de inicio debe ser anterior a la fecha de fin' };
+        return {
+            success: false,
+            message: 'La fecha de inicio debe ser anterior a la fecha de fin',
+        };
     }
     const fechaMinimaVacaciones = sumarDiasYYYYMMDD(14);
     if (String(fechaInicio).split('T')[0] < fechaMinimaVacaciones) {
@@ -154,41 +157,172 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
         [dias_vacacionesId]
     );
     if (diasExist.length === 0) {
-        return { success: false, message: 'El periodo de vacaciones no existe' };
+        return {
+            success: false,
+            message: 'El periodo de vacaciones no existe',
+        };
     }
-
-    // ← Obtener datos del empleado para guardarlos en la solicitud
     const empRows = await query(
-        'SELECT usuarioId, nombre, apPaterno, apMaterno, usuario FROM usuarios WHERE usuarioId = ?',
+        `
+        SELECT
+            u.usuarioId,
+            u.nombre,
+            u.apPaterno,
+            u.apMaterno,
+            u.usuario,
+            u.sucursalId,
+            u.departamentoId,
+            COALESCE(d.nombre, u.departamento) AS departamento,
+            s.nombre_sucursal
+        FROM usuarios u
+        LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
+        LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
+        WHERE u.usuarioId = ?
+        LIMIT 1
+        `,
         [usuarioId]
     );
     if (empRows.length === 0) {
-        return { success: false, message: 'El empleado no existe' };
+        return {
+            success: false,
+            message: 'El empleado no existe',
+        };
     }
     const emp = empRows[0];
-
     const dias = Math.floor(
         (new Date(fechaFin).getTime() - new Date(fechaInicio).getTime()) / (1000 * 60 * 60 * 24)
     ) + 1;
-
-    const result = await query(`
-        INSERT INTO vacaciones
-            (usuarioId, fecha_inicio_vacaciones, fecha_fin_vacaciones,
-             estado_final, dias_vacacionesId, dias_solicitados,
-             nombre, apPaterno, apMaterno, usuario)
-        VALUES (?, ?, ?, 'Pendiente', ?, ?, ?, ?, ?, ?)
-    `, [
-        usuarioId, fechaInicio, fechaFin,
-        dias_vacacionesId, dias,
-        emp.nombre, emp.apPaterno, emp.apMaterno, emp.usuario
-    ]);
-
+    const result = await query(
+        `
+        INSERT INTO vacaciones (
+            usuarioId,
+            fecha_inicio_vacaciones,
+            fecha_fin_vacaciones,
+            dias_solicitados,
+            estado_final,
+            respuesta_jefe_inmediato,
+            respuesta_RH,
+            dias_vacacionesId,
+            nombre,
+            apPaterno,
+            apMaterno,
+            usuario
+        )
+        VALUES (?, ?, ?, ?, 'Pendiente', NULL, NULL, ?, ?, ?, ?, ?)
+        `,
+        [
+            usuarioId,
+            fechaInicio,
+            fechaFin,
+            dias,
+            dias_vacacionesId,
+            emp.nombre,
+            emp.apPaterno,
+            emp.apMaterno,
+            emp.usuario,
+        ]
+    );
+    const vacacionesId = result.insertId;
+    const nombreEmpleado = `${emp.nombre || ''} ${emp.apPaterno || ''} ${emp.apMaterno || ''}`.trim();
+    const fechaInicioFmt = String(fechaInicio).split('T')[0];
+    const fechaFinFmt = String(fechaFin).split('T')[0];
+    // Notificación para RH
+    try {
+        await query(
+            `
+            INSERT INTO notificaciones_rh (
+                usuarioId,
+                tipo,
+                titulo,
+                mensaje,
+                url,
+                prioridad,
+                origen_tabla,
+                origen_id,
+                fecha_evento,
+                fecha_notificar,
+                leida
+            )
+            VALUES (
+                NULL,
+                'solicitud_vacaciones',
+                'Nueva solicitud de vacaciones',
+                ?,
+                '/rh/vacaciones',
+                'alta',
+                'vacaciones',
+                ?,
+                CURDATE(),
+                CURDATE(),
+                0
+            )
+            `,
+            [
+                `${nombreEmpleado} solicitó vacaciones del ${fechaInicioFmt} al ${fechaFinFmt}.`,
+                vacacionesId,
+            ]
+        );
+    } catch (error) {
+        console.error('[solicitarVacaciones] Error creando notificación RH:', error);
+    }
+    // Mensaje interno para supervisores con acceso a la sucursal/departamento del empleado
+    try {
+        const supervisores = await query(
+            `
+            SELECT DISTINCT
+                sup.usuarioId
+            FROM usuarios emp
+            INNER JOIN usuario_accesos ua
+                ON ua.sucursalId = emp.sucursalId
+               AND ua.activo = 1
+               AND (
+                    ua.departamentoId IS NULL
+                    OR ua.departamentoId = emp.departamentoId
+               )
+            INNER JOIN usuarios sup
+                ON sup.usuarioId = ua.usuarioId
+            WHERE emp.usuarioId = ?
+              AND sup.rolId = 2
+            `,
+            [usuarioId]
+        );
+        for (const supervisor of supervisores) {
+            await query(
+                `
+                INSERT INTO mensajes_internos (
+                    remitenteId,
+                    destinatarioId,
+                    tipo,
+                    titulo,
+                    mensaje,
+                    url,
+                    prioridad,
+                    estado,
+                    fecha_recordatorio,
+                    fecha_limite
+                )
+                VALUES (?, ?, 'vacaciones', ?, ?, ?, 'alta', 'pendiente', CURDATE(), ?)
+                `,
+                [
+                    usuarioId,
+                    supervisor.usuarioId,
+                    'Solicitud de vacaciones pendiente',
+                    `${nombreEmpleado} solicitó vacaciones del ${fechaInicioFmt} al ${fechaFinFmt}. Favor de revisar la solicitud.`,
+                    '/supervisor/vacaciones',
+                    fechaInicioFmt,
+                ]
+            );
+        }
+    } catch (error) {
+        console.error('[solicitarVacaciones] Error creando mensaje a supervisor:', error);
+    }
     return {
         success: true,
         message: 'Solicitud de vacaciones creada exitosamente',
-        vacacionesId: result.insertId,
+        vacacionesId,
     };
 }
+
 async function getAllEmpleadosPorAcceso(req) {
     const filtro = await construirFiltroAccesoUsuarios(req);
 
