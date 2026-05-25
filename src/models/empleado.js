@@ -547,7 +547,13 @@ async function responderVacaciones(vacacionesId, respuesta, respondedorRol) {
  * Obtener todas las solicitudes de vacaciones pendientes (sin respuesta del jefe o de RH).
  * @returns {Array} Lista de solicitudes pendientes con datos del empleado.
  */
-async function getVacacionesPendientes() {
+async function getVacacionesPendientes(req = null) {
+    const filtro = req
+        ? await construirFiltroAccesoUsuarios(req)
+        : { where: '', params: [] };
+
+    const whereBase = filtro.where || 'WHERE 1 = 1';
+
     const sql = `
         SELECT
             v.vacacionesId,
@@ -557,18 +563,31 @@ async function getVacacionesPendientes() {
             v.respuesta_jefe_inmediato,
             v.respuesta_RH,
             DATEDIFF(v.fecha_fin_vacaciones, v.fecha_inicio_vacaciones) + 1 AS dias_solicitados,
+            u.usuarioId,
             u.nombre,
             u.apPaterno,
             u.apMaterno,
-            u.usuario
+            u.usuario,
+            u.sucursalId,
+            u.departamentoId,
+            s.nombre_sucursal,
+            COALESCE(d.nombre, u.departamento) AS nombre_departamento,
+            p.nombre_puesto
         FROM vacaciones v
         LEFT JOIN diasVacaciones dv ON v.dias_vacacionesId = dv.dias_vacacionesId
-        LEFT JOIN usuarios u        ON v.usuarioId         = u.usuarioId
-        WHERE v.respuesta_jefe_inmediato IS NULL
-           OR v.respuesta_RH IS NULL
+        LEFT JOIN usuarios u        ON v.usuarioId = u.usuarioId
+        LEFT JOIN sucursales s      ON u.sucursalId = s.sucursalId
+        LEFT JOIN departamentos d   ON u.departamentoId = d.departamentoId
+        LEFT JOIN puesto p          ON u.puestoId = p.puestoId
+        ${whereBase}
+          AND (
+                v.respuesta_jefe_inmediato IS NULL
+             OR v.respuesta_RH IS NULL
+          )
         ORDER BY v.fecha_inicio_vacaciones ASC
     `;
-    return await query(sql);
+
+    return await query(sql, filtro.params);
 }
 /**
  * Obtener las notificaciones de un empleado combinando
@@ -792,7 +811,11 @@ async function deleteEmpleado(usuarioId, rolSolicitante, datosBaja = {}) {
  * Incluyendo las ya respondidas.
  * @returns {Array}
  */
-async function getTodasVacaciones() {
+async function getTodasVacaciones(req = null) {
+    const filtro = req
+        ? await construirFiltroAccesoUsuarios(req)
+        : { where: '', params: [] };
+
     return await query(`
         SELECT
             v.vacacionesId,
@@ -806,11 +829,39 @@ async function getTodasVacaciones() {
             u.apPaterno,
             u.apMaterno,
             u.usuario,
-            u.usuarioId
+            u.usuarioId,
+            u.sucursalId,
+            u.departamentoId,
+            s.nombre_sucursal,
+            COALESCE(d.nombre, u.departamento) AS nombre_departamento,
+            p.nombre_puesto
+        FROM vacaciones v
+        LEFT JOIN usuarios u      ON v.usuarioId = u.usuarioId
+        LEFT JOIN sucursales s    ON u.sucursalId = s.sucursalId
+        LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
+        LEFT JOIN puesto p        ON u.puestoId = p.puestoId
+        ${filtro.where}
+        ORDER BY v.vacacionesId DESC
+    `, filtro.params);
+}
+async function usuarioPuedeVerVacacion(req, vacacionesId) {
+    const filtro = await construirFiltroAccesoUsuarios(req);
+
+    const whereBase = filtro.where || 'WHERE 1 = 1';
+
+    const rows = await query(
+        `
+        SELECT v.vacacionesId
         FROM vacaciones v
         LEFT JOIN usuarios u ON v.usuarioId = u.usuarioId
-        ORDER BY v.vacacionesId DESC
-    `);
+        ${whereBase}
+          AND v.vacacionesId = ?
+        LIMIT 1
+        `,
+        [...filtro.params, vacacionesId]
+    );
+
+    return rows.length > 0;
 }
 async function upsertVehiculo(usuarioId, datos) {
     const existe = await query(
@@ -1056,4 +1107,5 @@ module.exports = {
     updateUniformeEmpleado,
     deleteUniformeEmpleado,
     replaceUniformesEmpleado,
+    usuarioPuedeVerVacacion,
 };

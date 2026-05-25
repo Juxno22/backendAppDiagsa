@@ -70,6 +70,7 @@ const {
     getDiasVacacionesLFT,
     deleteEmpleado,
     getTodasVacaciones,
+    usuarioPuedeVerVacacion,
     upsertVehiculo,
     getHijosByEmpleado,
     addHijo,
@@ -692,7 +693,7 @@ router.get(
     authMiddleware,
     async (req, res) => {
         try {
-            const pendientes = await getVacacionesPendientes();
+            const pendientes = await getVacacionesPendientes(req);
             res.json({
                 success: true,
                 data: pendientes,
@@ -736,6 +737,14 @@ router.patch(
                 return res.status(400).json({
                     success: false,
                     message: "respuestas erroneas",
+                });
+            }
+            const tieneAcceso = await usuarioPuedeVerVacacion(req, Number(id));
+
+            if (!tieneAcceso) {
+                return res.status(403).json({
+                    success: false,
+                    message: "No tienes acceso a esta solicitud de vacaciones",
                 });
             }
             const result = await responderVacaciones(id, respuesta, rol);
@@ -1251,11 +1260,17 @@ router.post(
 // GET /api/supervisor/vacaciones/todas
 router.get("/supervisor/vacaciones/todas", authMiddleware, async (req, res) => {
     try {
-        const vacaciones = await getTodasVacaciones();
-        res.json({ success: true, data: vacaciones });
+        const vacaciones = await getTodasVacaciones(req);
+        res.json({
+            success: true,
+            data: vacaciones,
+        });
     } catch (error) {
         console.error("Error en /supervisor/vacaciones/todas:", error);
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
     }
 });
 router.get("/evaluaciones/:id/word", authMiddleware, async (req, res) => {
@@ -3326,156 +3341,6 @@ router.delete('/rh/empleados/:id/uniformes/:uniformeId', authMiddleware, soloRH,
         return res.status(500).json({
             success: false,
             message: error.message || 'Error al eliminar uniforme',
-        });
-    }
-});
-
-// ─────────────────────────────────────────────────────────────
-// MENSAJES INTERNOS
-// ─────────────────────────────────────────────────────────────
-
-// RH / RHAdmin envía mensaje a un solo destinatario
-router.post('/rh/mensajes-internos', authMiddleware, soloRH, async (req, res) => {
-    try {
-        const remitenteId = req.user?.usuarioId;
-
-        const result = await crearMensajeInterno(req.body, remitenteId);
-
-        return res.status(result.success ? 201 : 400).json(result);
-    } catch (error) {
-        console.error('[POST /rh/mensajes-internos]', error);
-
-        return res.status(500).json({
-            success: false,
-            message: error.message || 'Error al enviar mensaje interno',
-        });
-    }
-});
-
-// RH / RHAdmin ve historial de mensajes enviados
-router.get('/rh/mensajes-internos/enviados', authMiddleware, soloRH, async (req, res) => {
-    try {
-        const remitenteId = req.user?.usuarioId;
-
-        const data = await getMensajesEnviados(remitenteId, {
-            estado: req.query.estado,
-            tipo: req.query.tipo,
-        });
-
-        return res.json({
-            success: true,
-            data,
-            total: data.length,
-        });
-    } catch (error) {
-        console.error('[GET /rh/mensajes-internos/enviados]', error);
-
-        return res.status(500).json({
-            success: false,
-            message: error.message || 'Error al consultar mensajes enviados',
-        });
-    }
-});
-
-// Cualquier usuario autenticado consulta sus mensajes recibidos
-router.get('/mensajes-internos', authMiddleware, async (req, res) => {
-    try {
-        const usuarioId = req.user?.usuarioId;
-
-        const data = await getMensajesRecibidos(usuarioId, {
-            estado: req.query.estado,
-            tipo: req.query.tipo,
-        });
-
-        return res.json({
-            success: true,
-            data,
-            total: data.length,
-        });
-    } catch (error) {
-        console.error('[GET /mensajes-internos]', error);
-
-        return res.status(500).json({
-            success: false,
-            message: error.message || 'Error al consultar mensajes internos',
-        });
-    }
-});
-
-// Contador para badge en Header
-router.get('/mensajes-internos/count', authMiddleware, async (req, res) => {
-    try {
-        const usuarioId = req.user?.usuarioId;
-        const total = await getCountMensajesPendientes(usuarioId);
-
-        return res.json({
-            success: true,
-            data: { total },
-            total,
-        });
-    } catch (error) {
-        console.error('[GET /mensajes-internos/count]', error);
-
-        return res.status(500).json({
-            success: false,
-            message: error.message || 'Error al consultar contador de mensajes',
-        });
-    }
-});
-
-// Marcar leído
-router.patch('/mensajes-internos/:mensajeId/leido', authMiddleware, async (req, res) => {
-    try {
-        const usuarioId = req.user?.usuarioId;
-        const mensajeId = Number(req.params.mensajeId);
-
-        const result = await marcarMensajeLeido(mensajeId, usuarioId);
-
-        return res.status(result.success ? 200 : 404).json(result);
-    } catch (error) {
-        console.error('[PATCH /mensajes-internos/:mensajeId/leido]', error);
-
-        return res.status(500).json({
-            success: false,
-            message: error.message || 'Error al marcar mensaje como leído',
-        });
-    }
-});
-
-// Marcar atendido
-router.patch('/mensajes-internos/:mensajeId/atendido', authMiddleware, async (req, res) => {
-    try {
-        const usuarioId = req.user?.usuarioId;
-        const mensajeId = Number(req.params.mensajeId);
-
-        const result = await marcarMensajeAtendido(mensajeId, usuarioId);
-
-        return res.status(result.success ? 200 : 404).json(result);
-    } catch (error) {
-        console.error('[PATCH /mensajes-internos/:mensajeId/atendido]', error);
-
-        return res.status(500).json({
-            success: false,
-            message: error.message || 'Error al marcar mensaje como atendido',
-        });
-    }
-});
-
-// Archivar
-router.patch('/mensajes-internos/:mensajeId/archivar', authMiddleware, async (req, res) => {
-    try {
-        const usuarioId = req.user?.usuarioId;
-        const mensajeId = Number(req.params.mensajeId);
-
-        const result = await archivarMensaje(mensajeId, usuarioId);
-
-        return res.status(result.success ? 200 : 404).json(result);
-    } catch (error) {
-        console.error('[PATCH /mensajes-internos/:mensajeId/archivar]', error);
-
-        return res.status(500).json({
-            success: false,
-            message: error.message || 'Error al archivar mensaje',
         });
     }
 });
