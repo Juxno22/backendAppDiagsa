@@ -192,8 +192,7 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
     const dias = Math.floor(
         (new Date(fechaFin).getTime() - new Date(fechaInicio).getTime()) / (1000 * 60 * 60 * 24)
     ) + 1;
-    const result = await query(
-        `
+    const result = await query(`
         INSERT INTO vacaciones (
             usuarioId,
             fecha_inicio_vacaciones,
@@ -209,54 +208,69 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
             usuario
         )
         VALUES (?, ?, ?, ?, 'Pendiente', NULL, NULL, ?, ?, ?, ?, ?)
-        `,
-        [
-            usuarioId,
-            fechaInicio,
-            fechaFin,
-            dias,
-            dias_vacacionesId,
-            emp.nombre,
-            emp.apPaterno,
-            emp.apMaterno,
-            emp.usuario,
-        ]
+    `, [
+        usuarioId,
+        fechaInicio,
+        fechaFin,
+        dias,
+        dias_vacacionesId,
+        emp.nombre,
+        emp.apPaterno,
+        emp.apMaterno,
+        emp.usuario,
+    ]);
+    const checkNueva = await query(
+        `
+    SELECT
+        vacacionesId,
+        estado_final,
+        respuesta_jefe_inmediato,
+        respuesta_RH
+    FROM vacaciones
+    WHERE vacacionesId = ?
+    LIMIT 1
+    `,
+        [vacacionesId]
     );
+
+    console.log('[solicitarVacaciones] solicitud creada:', checkNueva[0]);
+
+    const vacacionesId = result.insertId;
     const vacacionesId = result.insertId;
     const nombreEmpleado = `${emp.nombre || ''} ${emp.apPaterno || ''} ${emp.apMaterno || ''}`.trim();
     const fechaInicioFmt = String(fechaInicio).split('T')[0];
     const fechaFinFmt = String(fechaFin).split('T')[0];
-    // Notificación para RH
+
     try {
         await query(
             `
-            INSERT INTO notificaciones_rh (
-                usuarioId,
-                tipo,
-                titulo,
-                mensaje,
-                url,
-                prioridad,
-                origen_tabla,
-                origen_id,
-                fecha_evento,
-                fecha_notificar,
-                leida
-            )
-            VALUES (
-                NULL,
-                'solicitud_vacaciones',
-                'Nueva solicitud de vacaciones',
-                ?,
-                '/rh/vacaciones',
-                'alta',
-                'vacaciones',
-                ?,
-                CURDATE(),
-                CURDATE(),
-                0
-            )
-            `,
+        INSERT INTO notificaciones_rh (
+            usuarioId,
+            tipo,
+            titulo,
+            mensaje,
+            url,
+            prioridad,
+            origen_tabla,
+            origen_id,
+            fecha_evento,
+            fecha_notificar,
+            leida
+        )
+        VALUES (
+            NULL,
+            'solicitud_vacaciones',
+            'Nueva solicitud de vacaciones',
+            ?,
+            '/rh/vacaciones',
+            'alta',
+            'vacaciones',
+            ?,
+            CURDATE(),
+            CURDATE(),
+            0
+        )
+        `,
             [
                 `${nombreEmpleado} solicitó vacaciones del ${fechaInicioFmt} al ${fechaFinFmt}.`,
                 vacacionesId,
@@ -265,44 +279,44 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
     } catch (error) {
         console.error('[solicitarVacaciones] Error creando notificación RH:', error);
     }
-    // Mensaje interno para supervisores con acceso a la sucursal/departamento del empleado
     try {
         const supervisores = await query(
             `
-            SELECT DISTINCT
-                sup.usuarioId
-            FROM usuarios emp
-            INNER JOIN usuario_accesos ua
-                ON ua.sucursalId = emp.sucursalId
-               AND ua.activo = 1
-               AND (
-                    ua.departamentoId IS NULL
-                    OR ua.departamentoId = emp.departamentoId
-               )
-            INNER JOIN usuarios sup
-                ON sup.usuarioId = ua.usuarioId
-            WHERE emp.usuarioId = ?
-              AND sup.rolId = 2
-            `,
+        SELECT DISTINCT
+            sup.usuarioId
+        FROM usuarios emp
+        INNER JOIN usuario_accesos ua
+            ON ua.sucursalId = emp.sucursalId
+           AND ua.activo = 1
+           AND (
+                ua.departamentoId IS NULL
+                OR ua.departamentoId = emp.departamentoId
+           )
+        INNER JOIN usuarios sup
+            ON sup.usuarioId = ua.usuarioId
+        WHERE emp.usuarioId = ?
+          AND sup.rolId = 2
+        `,
             [usuarioId]
         );
+
         for (const supervisor of supervisores) {
             await query(
                 `
-                INSERT INTO mensajes_internos (
-                    remitenteId,
-                    destinatarioId,
-                    tipo,
-                    titulo,
-                    mensaje,
-                    url,
-                    prioridad,
-                    estado,
-                    fecha_recordatorio,
-                    fecha_limite
-                )
-                VALUES (?, ?, 'vacaciones', ?, ?, ?, 'alta', 'pendiente', CURDATE(), ?)
-                `,
+            INSERT INTO mensajes_internos (
+                remitenteId,
+                destinatarioId,
+                tipo,
+                titulo,
+                mensaje,
+                url,
+                prioridad,
+                estado,
+                fecha_recordatorio,
+                fecha_limite
+            )
+            VALUES (?, ?, 'vacaciones', ?, ?, ?, 'alta', 'pendiente', CURDATE(), ?)
+            `,
                 [
                     usuarioId,
                     supervisor.usuarioId,
@@ -313,6 +327,8 @@ async function solicitarVacaciones(usuarioId, fechaInicio, fechaFin, dias_vacaci
                 ]
             );
         }
+
+        console.log('[solicitarVacaciones] supervisores notificados:', supervisores.length);
     } catch (error) {
         console.error('[solicitarVacaciones] Error creando mensaje a supervisor:', error);
     }
@@ -1074,7 +1090,7 @@ async function deleteHijo(hijoId) {
 }
 
 //Operaciones para guardar uniformes en posecion del empleado
-async function getUniformesEmpleado(usuarioId){
+async function getUniformesEmpleado(usuarioId) {
     return await query(
         `SELECT uniformeId, usuarioId, tipo, descripcion, talla, cantidad,
             fecha_entrega, observaciones, activo, createdAt, updatedAt
@@ -1088,7 +1104,7 @@ async function getUniformesEmpleado(usuarioId){
     );
 };
 
-async function addUniformeEmpleado(usuarioId, data = {}){
+async function addUniformeEmpleado(usuarioId, data = {}) {
     const tipo = String(data.tipo || '').trim().toUpperCase();
     const descripcion = String(data.descripcion || '').trim().toUpperCase();
     const talla = String(data.talla || '').trim().toUpperCase();
@@ -1096,14 +1112,14 @@ async function addUniformeEmpleado(usuarioId, data = {}){
     const fecha_entrega = data.fecha_entrega || null;
     const observaciones = String(data.observaciones || '').trim().toUpperCase();
 
-    if(!tipo){
+    if (!tipo) {
         return {
             success: false,
             message: 'El tipo de uniforme es obligatorio',
         }
     }
 
-    if(!cantidad || cantidad <= 0){
+    if (!cantidad || cantidad <= 0) {
         return {
             success: false,
             message: 'La cantidad debe de ser mayor a 0',
@@ -1116,14 +1132,14 @@ async function addUniformeEmpleado(usuarioId, data = {}){
             cantidad, fecha_entrega, observaciones
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
         `, [
-            usuarioId,
-            tipo,
-            descripcion || null,
-            talla || null,
-            cantidad,
-            fecha_entrega || null,
-            observaciones || null,
-        ]
+        usuarioId,
+        tipo,
+        descripcion || null,
+        talla || null,
+        cantidad,
+        fecha_entrega || null,
+        observaciones || null,
+    ]
     );
 
     return {
@@ -1133,7 +1149,7 @@ async function addUniformeEmpleado(usuarioId, data = {}){
     };
 };
 
-async function updateUniformeEmpleado(uniformeId, usuarioId, data = {}){
+async function updateUniformeEmpleado(uniformeId, usuarioId, data = {}) {
     const tipo = String(data.tipo || '').trim().toUpperCase();
     const descripcion = String(data.descripcion || '').trim().toUpperCase();
     const talla = String(data.talla || '').trim().toUpperCase();
@@ -1141,21 +1157,21 @@ async function updateUniformeEmpleado(uniformeId, usuarioId, data = {}){
     const fecha_entrega = data.fecha_entrega || null;
     const observaciones = String(data.observaciones || '').trim().toUpperCase();
 
-    if(!tipo){
+    if (!tipo) {
         return {
             success: false,
             message: 'El tipo de uniforme es obligatorio',
         }
     }
 
-    if(!cantidad || cantidad <= 0){
-        return { 
+    if (!cantidad || cantidad <= 0) {
+        return {
             success: false,
             message: 'La cantidad debe ser mayor a 0',
         }
     }
 
-    const result =  await query(
+    const result = await query(
         `UPDATE usuario_uniformes SET
             tipo = ?,
             descripcion = ?,
@@ -1166,24 +1182,24 @@ async function updateUniformeEmpleado(uniformeId, usuarioId, data = {}){
          WHERE uniformeId = ?
             AND usuarioId = ?
         `, [
-            tipo,
-            descripcion || null,
-            talla || null,
-            cantidad,
-            fecha_entrega || null,
-            observaciones || null,
-            uniformeId,
-            usuarioId,
-        ]
+        tipo,
+        descripcion || null,
+        talla || null,
+        cantidad,
+        fecha_entrega || null,
+        observaciones || null,
+        uniformeId,
+        usuarioId,
+    ]
     )
 
     return {
         success: true,
-        message: result.affectedRows > 0 ?  'Uniforme actualizado correctamente' : 'No se encontro el unifome',
+        message: result.affectedRows > 0 ? 'Uniforme actualizado correctamente' : 'No se encontro el unifome',
     };
 };
 
-async function deleteUniformeEmpleado(uniformeId, usuarioId){
+async function deleteUniformeEmpleado(uniformeId, usuarioId) {
     const result = await query(
         `UPDATE usuario_uniformes SET activo = 0,
          WHERE uniformeId = ? AND usuarioId = ?
@@ -1196,17 +1212,17 @@ async function deleteUniformeEmpleado(uniformeId, usuarioId){
     };
 };
 
-async function replaceUniformesEmpleado(usuarioId, uniformes = []){
+async function replaceUniformesEmpleado(usuarioId, uniformes = []) {
     await query(
         `UPDATE usuario_uniformes SET activo = 0 WHERE usuarioId = ?
         `, [usuarioId]
     );
 
-    for( const item of uniformes){
+    for (const item of uniformes) {
         const tipo = String(item.tipo || '').trim();
         const cantidad = Number(item.cantidad || 0);
 
-        if(!tipo || cantidad <= 0) continue;
+        if (!tipo || cantidad <= 0) continue;
 
         await addUniformeEmpleado(usuarioId, item);
     }

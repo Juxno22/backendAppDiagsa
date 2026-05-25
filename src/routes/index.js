@@ -460,7 +460,7 @@ router.get("/empleados/mis-vacaciones", authMiddleware, async (req, res) => {
 /**
  * POST /api/empleados/solicitar-vacaciones
  * El empleado crea una nueva solicitud de vacaciones.
- * Body esperado: { usuarioId, fechaInicio, fechaFin, dias_vacacionesId }
+ * Body esperado: { fechaInicio, fechaFin, dias_vacacionesId }
  */
 router.post(
     "/empleados/solicitar-vacaciones",
@@ -469,12 +469,12 @@ router.post(
         try {
             const { fechaInicio, fechaFin, dias_vacacionesId } = req.body;
             const usuarioId = req.user.usuarioId;
-            const rolSolicitante = req.user.rolId;
 
             if (!fechaInicio || !fechaFin || !dias_vacacionesId) {
-                return res
-                    .status(400)
-                    .json({ success: false, message: "Faltan campos requeridos" });
+                return res.status(400).json({
+                    success: false,
+                    message: "Faltan campos requeridos",
+                });
             }
 
             const result = await solicitarVacaciones(
@@ -484,51 +484,190 @@ router.post(
                 dias_vacacionesId,
             );
 
-            if (!result.success) return res.status(400).json(result);
+            if (!result.success) {
+                return res.status(400).json(result);
+            }
 
-            // ── RH: aprobar automáticamente sin autorización ──
-            if (rolSolicitante === 3) {
+            const vacacionesId = result.vacacionesId;
+
+            /**
+             * Importante:
+             * Ya NO se aprueba automáticamente por rol.
+             * La solicitud debe quedar:
+             * estado_final = 'Pendiente'
+             * respuesta_jefe_inmediato = NULL
+             * respuesta_RH = NULL
+             */
+
+            const empleadoRows = await new Promise((resolve, reject) => {
+                connection.query(
+                    `
+                    SELECT
+                        u.usuarioId,
+                        u.nombre,
+                        u.apPaterno,
+                        u.apMaterno,
+                        u.usuario,
+                        u.sucursalId,
+                        u.departamentoId,
+                        COALESCE(d.nombre, u.departamento) AS departamento,
+                        s.nombre_sucursal
+                    FROM usuarios u
+                    LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
+                    LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
+                    WHERE u.usuarioId = ?
+                    LIMIT 1
+                    `,
+                    [usuarioId],
+                    (err, rows) => (err ? reject(err) : resolve(rows)),
+                );
+            });
+
+            const empleado = empleadoRows[0];
+
+            const nombreEmpleado = empleado
+                ? `${empleado.nombre || ""} ${empleado.apPaterno || ""} ${empleado.apMaterno || ""}`.trim()
+                : "Un colaborador";
+
+            const fechaInicioFmt = String(fechaInicio).split("T")[0];
+            const fechaFinFmt = String(fechaFin).split("T")[0];
+
+            // ─────────────────────────────────────────────
+            // 1. Notificar a Recursos Humanos
+            // ─────────────────────────────────────────────
+            try {
                 await new Promise((resolve, reject) => {
                     connection.query(
-                        `UPDATE vacaciones SET 
-                        estado_final = 'Aceptadas',
-                        respuesta_jefe_inmediato = 'Aceptadas',
-                        respuesta_RH = 'Aceptadas'
-                     WHERE vacacionesId = ?`,
-                        [result.vacacionesId],
+                        `
+                        INSERT INTO notificaciones_rh (
+                            usuarioId,
+                            tipo,
+                            titulo,
+                            mensaje,
+                            url,
+                            prioridad,
+                            origen_tabla,
+                            origen_id,
+                            fecha_evento,
+                            fecha_notificar,
+                            leida
+                        )
+                        VALUES (
+                            NULL,
+                            'solicitud_vacaciones',
+                            'Nueva solicitud de vacaciones',
+                            ?,
+                            '/rh/vacaciones',
+                            'alta',
+                            'vacaciones',
+                            ?,
+                            CURDATE(),
+                            CURDATE(),
+                            0
+                        )
+                        `,
+                        [
+                            `${nombreEmpleado} solicitó vacaciones del ${fechaInicioFmt} al ${fechaFinFmt}.`,
+                            vacacionesId,
+                        ],
                         (err) => (err ? reject(err) : resolve(null)),
                     );
                 });
-                return res.json({
-                    success: true,
-                    message: "Vacaciones aprobadas automáticamente",
-                    vacacionesId: result.vacacionesId,
-                });
+            } catch (error) {
+                console.error("[solicitar-vacaciones] Error notificando RH:", error);
             }
 
-            // ── Supervisor: requiere solo autorización de RH ──
-            if (rolSolicitante === 2) {
-                await new Promise((resolve, reject) => {
+            // ─────────────────────────────────────────────
+            // 2. Notificar al supervisor con acceso a ese departamento
+            // ─────────────────────────────────────────────
+            try {
+                const supervisores = await new Promise((resolve, reject) => {
                     connection.query(
-                        `UPDATE vacaciones SET 
-                        respuesta_jefe_inmediato = 'Aceptadas'
-                     WHERE vacacionesId = ?`,
-                        [result.vacacionesId],
-                        (err) => (err ? reject(err) : resolve(null)),
+                        `
+                        SELECT DISTINCT
+                            sup.usuarioId
+                        FROM usuarios emp
+                        INNER JOIN usuario_accesos ua
+                            ON ua.sucursalId = emp.sucursalId
+                           AND ua.activo = 1
+                           AND (
+                                ua.departamentoId IS NULL
+                                OR ua.departamentoId = emp.departamentoId
+                           )
+                        INNER JOIN usuarios sup
+                            ON sup.usuarioId = ua.usuarioId
+                        WHERE emp.usuarioId = ?
+                          AND sup.rolId = 2
+                          AND sup.usuarioId <> emp.usuarioId
+                        `,
+                        [usuarioId],
+                        (err, rows) => (err ? reject(err) : resolve(rows)),
                     );
                 });
-                return res.json({
-                    success: true,
-                    message: "Solicitud enviada. Pendiente de autorización de RH",
-                    vacacionesId: result.vacacionesId,
-                });
+
+                for (const supervisor of supervisores) {
+                    await new Promise((resolve, reject) => {
+                        connection.query(
+                            `
+                            INSERT INTO mensajes_internos (
+                                remitenteId,
+                                destinatarioId,
+                                tipo,
+                                titulo,
+                                mensaje,
+                                url,
+                                prioridad,
+                                estado,
+                                fecha_recordatorio,
+                                fecha_limite
+                            )
+                            VALUES (
+                                ?,
+                                ?,
+                                'vacaciones',
+                                'Solicitud de vacaciones pendiente',
+                                ?,
+                                '/supervisor/vacaciones',
+                                'alta',
+                                'pendiente',
+                                CURDATE(),
+                                ?
+                            )
+                            `,
+                            [
+                                usuarioId,
+                                supervisor.usuarioId,
+                                `${nombreEmpleado} solicitó vacaciones del ${fechaInicioFmt} al ${fechaFinFmt}. Favor de revisar la solicitud.`,
+                                fechaInicioFmt,
+                            ],
+                            (err) => (err ? reject(err) : resolve(null)),
+                        );
+                    });
+                }
+
+                console.log(
+                    "[solicitar-vacaciones] supervisores notificados:",
+                    supervisores.length,
+                );
+            } catch (error) {
+                console.error(
+                    "[solicitar-vacaciones] Error notificando supervisor:",
+                    error,
+                );
             }
 
-            res.status(result.success ? 200 : 400).json(result);
+            return res.status(201).json({
+                success: true,
+                message: "Solicitud de vacaciones enviada. Pendiente de autorización.",
+                vacacionesId,
+            });
         } catch (error) {
-            res
-                .status(500)
-                .json({ success: false, message: error.message || "Error interno" });
+            console.error("[POST /empleados/solicitar-vacaciones]", error);
+
+            return res.status(500).json({
+                success: false,
+                message: error.message || "Error interno",
+            });
         }
     },
 );
