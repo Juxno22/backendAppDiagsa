@@ -58,8 +58,11 @@ async function crearDescuentoPrestamo(usuarioId, data = {}) {
     const concepto = String(data.concepto || '').trim().toUpperCase();
     const tipo = data.tipo || 'prestamo';
     const montoTotal = redondear2(data.monto_total ?? data.monto);
-    const totalPagos = Number(data.total_pagos || data.plazo_quincenas || 1);
-    const periodicidad = data.periodicidad || 'quincena';
+    const periodicidadOriginal = data.periodicidad || 'quincena';
+    const periodicidad = periodicidadOriginal === 'unica' ? 'quincena' : periodicidadOriginal;
+    const totalPagos = periodicidadOriginal === 'unica'
+        ? 1
+        : Number(data.total_pagos || data.plazo_quincenas || 1);
     const fechaInicio = fechaLocalYYYYMMDD(new Date());
     const fechaProximoPago =
         data.fecha_proximo_pago ||

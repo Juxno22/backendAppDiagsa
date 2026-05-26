@@ -1876,43 +1876,55 @@ router.get('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => {
 });
 router.post('/rh/empleados/:id/descuentos', authMiddleware, async (req, res) => {
     try {
-        const { descuentos } = req.body;
+        const { id } = req.params;
+        const { sueldo_neto, descuentos = [] } = req.body;
+        if (sueldo_neto !== undefined && sueldo_neto !== null && sueldo_neto !== '') {
+            await query(
+                'UPDATE usuarios SET sueldo_neto = ? WHERE usuarioId = ?',
+                [Number(sueldo_neto), id]
+            );
+        }
         if (!Array.isArray(descuentos) || descuentos.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'No se enviaron descuentos'
+                message: 'Agrega al menos una deducción válida',
             });
         }
-        const inserts = [];
+        const resultados = [];
         for (const d of descuentos) {
-            if (
-                !d.concepto ||
-                d.monto === undefined ||
-                d.monto === null ||
-                d.monto === ''
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Faltan campos'
-                });
+            const periodicidadFrontend = d.periodicidad || 'quincena';
+            const payload = {
+                concepto: d.concepto,
+                tipo: d.tipo || 'deduccion',
+                // El monto total de la deuda/deducción completa
+                monto_total: Number(d.monto_total ?? d.monto),
+                // Si es única, solo será 1 pago.
+                // Si es quincenal, se respeta la cantidad de quincenas.
+                total_pagos:
+                    periodicidadFrontend === 'unica'
+                        ? 1
+                        : Number(d.total_pagos || d.plazo_quincenas || 1),
+                // Backend lo maneja como quincena; única = quincena de 1 pago.
+                periodicidad: 'quincena',
+                fecha_inicio: d.fecha_inicio || d.fecha_proximo_pago || undefined,
+                observaciones: d.observaciones || null,
+            };
+            const result = await crearDescuentoPrestamo(Number(id), payload);
+            if (!result.success) {
+                return res.status(400).json(result);
             }
-            const result = await new Promise((resolve, reject) => {
-                connection.query(
-                    ` INSERT INTO descuentos ( usuarioId, concepto, monto, tipo, periodicidad, activo ) VALUES (?, ?, ?, ?, ?, 1) `,
-                    [req.params.id, d.concepto, Number(d.monto), d.tipo || 'descuento', d.periodicidad || 'quincena'],
-                    (err, r) => err ? reject(err) : resolve(r)
-                );
-            });
-            inserts.push(result);
+            resultados.push(result);
         }
-        res.status(201).json({
+        return res.json({
             success: true,
-            message: 'Descuentos guardados correctamente'
+            message: 'Deducciones guardadas correctamente',
+            data: resultados,
         });
     } catch (error) {
-        console.error(error); res.status(500).json({
+        console.error('[POST /rh/empleados/:id/descuentos]', error);
+        return res.status(500).json({
             success: false,
-            message: error.message
+            message: error.message || 'No se pudo guardar',
         });
     }
 });
