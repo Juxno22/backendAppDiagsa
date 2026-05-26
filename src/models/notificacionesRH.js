@@ -17,6 +17,11 @@ const ROL_RHADMIN = 7;
 // Días antes de notificar evaluaciones de 1, 2 y 3 meses
 const DIAS_ANTES_EVALUACION = 5;
 
+// Ventana operativa para no saturar RH.
+// Solo se crean/muestran/cuentan evaluaciones cuya fecha real cae entre hoy y los próximos 15 días.
+const VENTANA_EVALUACIONES_DIAS = 15;
+const TIPOS_EVALUACION = ['evaluacion_1mes', 'evaluacion_2mes', 'evaluacion_3mes'];
+
 const EVALUACIONES = [
     { tipo: 'evaluacion_1mes', meses: 1, label: 'Evaluación 1er mes' },
     { tipo: 'evaluacion_2mes', meses: 2, label: 'Evaluación 2do mes' },
@@ -29,7 +34,80 @@ function fechaSQL(fecha) {
     const d = new Date(fecha);
     if (Number.isNaN(d.getTime())) return null;
 
-    return fechaMexicoYYYYMMDD();
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Mexico_City',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(d);
+}
+
+function parseFechaLocal(fecha) {
+    if (!fecha) return null;
+
+    const soloFecha = String(fecha).split('T')[0];
+    const d = new Date(`${soloFecha}T12:00:00`);
+
+    if (Number.isNaN(d.getTime())) return null;
+
+    return d;
+}
+
+function diffDiasYYYYMMDD(fechaA, fechaB) {
+    const a = parseFechaLocal(fechaA);
+    const b = parseFechaLocal(fechaB);
+
+    if (!a || !b) return 999999;
+
+    return Math.floor((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function evaluacionDebeNotificarse(fechaContratacion, mesesEvaluacion) {
+    const hoy = fechaSQL(new Date());
+    const fechaEvaluacion = sumarMeses(fechaContratacion, mesesEvaluacion);
+
+    if (!fechaEvaluacion) {
+        return {
+            debeCrear: false,
+            fechaEvaluacion: null,
+            fechaNotificar: null,
+            motivo: 'sin_fecha_contratacion',
+        };
+    }
+
+    const diasParaEvaluacion = diffDiasYYYYMMDD(fechaEvaluacion, hoy);
+
+    /*
+     * Blindaje:
+     * - Si ya pasó, no se crea.
+     * - Si falta más de 15 días, no se crea todavía.
+     * - Si cae entre hoy y los próximos 15 días, sí se crea.
+     * Esto evita que al migrar usuarios antiguos se creen evaluaciones atrasadas.
+     */
+    if (diasParaEvaluacion < 0) {
+        return {
+            debeCrear: false,
+            fechaEvaluacion,
+            fechaNotificar: null,
+            motivo: 'evaluacion_pasada',
+        };
+    }
+
+    if (diasParaEvaluacion > VENTANA_EVALUACIONES_DIAS) {
+        return {
+            debeCrear: false,
+            fechaEvaluacion,
+            fechaNotificar: null,
+            motivo: 'fuera_de_ventana',
+        };
+    }
+
+    return {
+        debeCrear: true,
+        fechaEvaluacion,
+        fechaNotificar: restarDias(fechaEvaluacion, DIAS_ANTES_EVALUACION),
+        motivo: 'ok',
+    };
 }
 function fechaEventoPorDias(dias = 0) {
     const fecha = new Date();
@@ -114,6 +192,10 @@ async function crearNotificacionRH({
                 (? IS NULL AND fecha_evento IS NULL)
                 OR DATE(fecha_evento) = DATE(?)
               )
+          AND (
+                (? IS NULL AND fecha_evaluacion IS NULL)
+                OR DATE(fecha_evaluacion) = DATE(?)
+              )
         LIMIT 1
         `,
             [
@@ -122,6 +204,8 @@ async function crearNotificacionRH({
                 origen_id,
                 fechaEventoFinal,
                 fechaEventoFinal,
+                fechaEvaluacionFinal,
+                fechaEvaluacionFinal,
             ]
         );
 
@@ -213,28 +297,39 @@ async function generarNotificacionesEvaluaciones(usuarioId = null) {
     );
 
     let creadas = 0;
+    let omitidas = 0;
 
     for (const emp of empleados) {
-        if (!emp.fechaContratacion) continue;
+        if (!emp.fechaContratacion) {
+            omitidas += 1;
+            continue;
+        }
 
         const nombreCompleto = `${emp.nombre || ''} ${emp.apPaterno || ''} ${emp.apMaterno || ''}`.trim();
 
         for (const evalItem of EVALUACIONES) {
-            const fechaEvaluacion = sumarMeses(emp.fechaContratacion, evalItem.meses);
-            const fechaNotificar = restarDias(fechaEvaluacion, DIAS_ANTES_EVALUACION);
+            const validacion = evaluacionDebeNotificarse(
+                emp.fechaContratacion,
+                evalItem.meses
+            );
+
+            if (!validacion.debeCrear) {
+                omitidas += 1;
+                continue;
+            }
 
             const result = await crearNotificacionRH({
                 usuarioId: emp.usuarioId,
                 tipo: evalItem.tipo,
                 titulo: evalItem.label,
-                mensaje: `${nombreCompleto} tiene próxima ${evalItem.label.toLowerCase()} programada para ${fechaEvaluacion}.`,
+                mensaje: `${nombreCompleto} tiene próxima ${evalItem.label.toLowerCase()} programada para ${validacion.fechaEvaluacion}.`,
                 url: `/rh/empleados/${emp.usuarioId}`,
                 prioridad: 'media',
                 origen_tabla: 'usuarios',
                 origen_id: emp.usuarioId,
-                fecha_evento: fechaEvaluacion,
-                fecha_evaluacion: fechaEvaluacion,
-                fecha_notificar: fechaNotificar,
+                fecha_evento: validacion.fechaEvaluacion,
+                fecha_evaluacion: validacion.fechaEvaluacion,
+                fecha_notificar: validacion.fechaNotificar,
                 enviarPush: false,
             });
 
@@ -246,6 +341,8 @@ async function generarNotificacionesEvaluaciones(usuarioId = null) {
         success: true,
         message: 'Notificaciones de evaluaciones generadas',
         creadas,
+        omitidas,
+        ventanaDias: VENTANA_EVALUACIONES_DIAS,
     };
 }
 
@@ -556,7 +653,7 @@ async function generarNotificacionesPendientesRH({ usuarioId = null, enviarPush 
  * Si generar=true, primero crea pendientes nuevas.
  */
 async function getNotificacionesRH(soloNoLeidas = false, opciones = {}) {
-    const { generar = true, lectorUsuarioId = null } = opciones;
+    const { generar = true, lectorUsuarioId = null, limit = 200 } = opciones;
 
     if (!lectorUsuarioId) {
         throw new Error('Falta lectorUsuarioId para consultar notificaciones RH');
@@ -614,15 +711,28 @@ async function getNotificacionesRH(soloNoLeidas = false, opciones = {}) {
         LEFT JOIN puesto p ON u.puestoId = p.puestoId
         WHERE n.fecha_notificar <= CURDATE()
           ${whereLeida}
+          AND (
+              n.tipo NOT IN ('evaluacion_1mes', 'evaluacion_2mes', 'evaluacion_3mes')
+              OR (
+                  n.tipo IN ('evaluacion_1mes', 'evaluacion_2mes', 'evaluacion_3mes')
+                  AND n.fecha_evaluacion BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
+              )
+          )
         ORDER BY
             COALESCE(nul.leida, 0) ASC,
             FIELD(COALESCE(n.prioridad, 'media'), 'alta', 'media', 'baja'),
-            n.createdAt DESC
+            n.fecha_notificar ASC,
+            n.createdAt DESC,
+            n.notificacionId DESC
+        LIMIT ?
         `,
-        [lectorUsuarioId]
+        [
+            lectorUsuarioId,
+            VENTANA_EVALUACIONES_DIAS,
+            Math.min(Number(limit) || 200, 200),
+        ]
     );
 }
-
 
 async function marcarComoLeida(notificacionId, lectorUsuarioId) {
     if (!notificacionId) {
@@ -667,7 +777,7 @@ async function marcarTodasComoLeidas(lectorUsuarioId) {
         };
     }
 
-    await query(
+    const result = await query(
         `
         INSERT INTO notificaciones_rh_lecturas (
             notificacionId,
@@ -686,17 +796,29 @@ async function marcarTodasComoLeidas(lectorUsuarioId) {
          AND nul.usuarioId = ?
         WHERE n.fecha_notificar <= CURDATE()
           AND COALESCE(nul.leida, 0) = 0
+          AND (
+              n.tipo NOT IN ('evaluacion_1mes', 'evaluacion_2mes', 'evaluacion_3mes')
+              OR (
+                  n.tipo IN ('evaluacion_1mes', 'evaluacion_2mes', 'evaluacion_3mes')
+                  AND n.fecha_evaluacion BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
+              )
+          )
         ON DUPLICATE KEY UPDATE
             leida = 1,
             leidaAt = NOW(),
             updatedAt = CURRENT_TIMESTAMP
         `,
-        [lectorUsuarioId, lectorUsuarioId]
+        [
+            lectorUsuarioId,
+            lectorUsuarioId,
+            VENTANA_EVALUACIONES_DIAS,
+        ]
     );
 
     return {
         success: true,
-        message: 'Notificaciones marcadas como leídas',
+        message: 'Notificaciones visibles marcadas como leídas',
+        affectedRows: result.affectedRows || 0,
     };
 }
 
@@ -714,8 +836,18 @@ async function contarNoLeidas(lectorUsuarioId) {
          AND nul.usuarioId = ?
         WHERE n.fecha_notificar <= CURDATE()
           AND COALESCE(nul.leida, 0) = 0
+          AND (
+              n.tipo NOT IN ('evaluacion_1mes', 'evaluacion_2mes', 'evaluacion_3mes')
+              OR (
+                  n.tipo IN ('evaluacion_1mes', 'evaluacion_2mes', 'evaluacion_3mes')
+                  AND n.fecha_evaluacion BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
+              )
+          )
         `,
-        [lectorUsuarioId]
+        [
+            lectorUsuarioId,
+            VENTANA_EVALUACIONES_DIAS,
+        ]
     );
 
     return result[0]?.total || 0;
