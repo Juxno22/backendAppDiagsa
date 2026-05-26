@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const connection = require("../config/connection");
+const path = require('path');
+const fs = require('fs');
 const { fechaMexicoYYYYMMDD } = require('../utils/fecha');
 const { authMiddleware, soloSupervisor, soloRH,
     soloMandos, soloRHAdmin, puedeVerDepartamento,
@@ -148,6 +150,84 @@ const query = (sql, values = []) =>
             else resolve(results);
         });
     });
+router.get('/organigramas/cedis-almacen', authMiddleware, async (req, res) => {
+    try {
+        const usuarioId = req.user?.usuarioId;
+        if (!usuarioId) {
+            return res.status(401).json({
+                success: false,
+                message: 'Usuario no autenticado',
+            });
+        }
+        const rows = await query(
+            `
+            SELECT
+                u.usuarioId,
+                u.rolId,
+                u.sucursalId,
+                u.departamentoId,
+                u.departamento,
+                s.nombre_sucursal,
+                d.nombre AS nombre_departamento
+            FROM usuarios u
+            LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
+            LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
+            WHERE u.usuarioId = ?
+            LIMIT 1
+            `,
+            [usuarioId]
+        );
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado',
+            });
+        }
+        const usuario = rows[0];
+        const normalizar = (value = '') =>
+            String(value)
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+                .toUpperCase();
+        const sucursal = normalizar(usuario.nombre_sucursal);
+        const departamento = normalizar(usuario.nombre_departamento || usuario.departamento);
+        const esCedisMex =
+            Number(usuario.sucursalId) === 1 ||
+            sucursal.includes('CEDIS MEX');
+        const departamentoPermitido = ['ALMACEN', 'COMPRAS', 'LOGISTICA'].includes(departamento);
+        const esGerenteOperativo = Number(usuario.rolId) === 8 && esCedisMex;
+        if (!((esCedisMex && departamentoPermitido) || esGerenteOperativo)) {
+            return res.status(403).json({
+                success: false,
+                message: 'No tienes acceso a este organigrama',
+            });
+        }
+        const filePath = path.resolve(
+            __dirname,
+            '../assets/organigramas/organigrama-cedis-almacen.pdf'
+        );
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({
+                success: false,
+                message: 'PDF de organigrama no encontrado',
+            });
+        }
+        const download = req.query.download === '1';
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader(
+            'Content-Disposition',
+            `${download ? 'attachment' : 'inline'}; filename="organigrama-cedis-almacen.pdf"`
+        );
+        return res.sendFile(filePath);
+    } catch (error) {
+        console.error('[GET /organigramas/cedis-almacen]', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener organigrama',
+        });
+    }
+});
 // POST /api/rh/empleados/:id/foto
 router.post(
     "/rh/empleados/:id/foto",
