@@ -1870,7 +1870,16 @@ router.get('/empleados/permisos', authMiddleware, async (req, res) => {
 // Supervisor ve permisos de sus departamentos asignados
 router.get('/supervisor/permisos', authMiddleware, async (req, res) => {
     try {
+        console.log('[GET /supervisor/permisos] usuario:', {
+            usuarioId: req.user?.usuarioId,
+            rolId: req.user?.rolId,
+            sucursalId: req.user?.sucursalId,
+            departamentoId: req.user?.departamentoId,
+        });
+
         const permisos = await getPermisosSupervisor(req.user.usuarioId);
+
+        console.log('[GET /supervisor/permisos] total:', permisos.length);
 
         return res.json({
             success: true,

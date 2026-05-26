@@ -183,7 +183,8 @@ async function getTodosPermisos() {
 }
 
 async function getPermisosSupervisor(usuarioSupervisorId) {
-    return await query(`
+    return await query(
+        `
         SELECT DISTINCT
             p.*,
             u.nombre,
@@ -196,9 +197,8 @@ async function getPermisosSupervisor(usuarioSupervisorId) {
             s.nombre_sucursal,
             d.nombre AS nombre_departamento
         FROM permisos p
-        INNER JOIN usuarios u ON p.usuarioId = u.usuarioId
-        LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
-        LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
+        INNER JOIN usuarios u
+            ON p.usuarioId = u.usuarioId
         INNER JOIN usuario_accesos ua
             ON ua.usuarioId = ?
            AND ua.activo = 1
@@ -207,16 +207,25 @@ async function getPermisosSupervisor(usuarioSupervisorId) {
                 ua.departamentoId IS NULL
                 OR ua.departamentoId = u.departamentoId
            )
+        LEFT JOIN sucursales s
+            ON u.sucursalId = s.sucursalId
+        LEFT JOIN departamentos d
+            ON u.departamentoId = d.departamentoId
         WHERE u.usuarioId <> ?
         ORDER BY p.fecha_elaboracion DESC, p.permisoId DESC
-    `, [usuarioSupervisorId, usuarioSupervisorId]);
+        `,
+        [usuarioSupervisorId, usuarioSupervisorId]
+    );
 }
 
 async function usuarioPuedeResponderPermiso(usuarioSupervisorId, permisoId) {
-    const rows = await query(`
-        SELECT p.permisoId
+    const rows = await query(
+        `
+        SELECT
+            p.permisoId
         FROM permisos p
-        INNER JOIN usuarios u ON p.usuarioId = u.usuarioId
+        INNER JOIN usuarios u
+            ON p.usuarioId = u.usuarioId
         INNER JOIN usuario_accesos ua
             ON ua.usuarioId = ?
            AND ua.activo = 1
@@ -228,7 +237,9 @@ async function usuarioPuedeResponderPermiso(usuarioSupervisorId, permisoId) {
         WHERE p.permisoId = ?
           AND u.usuarioId <> ?
         LIMIT 1
-    `, [usuarioSupervisorId, permisoId, usuarioSupervisorId]);
+        `,
+        [usuarioSupervisorId, permisoId, usuarioSupervisorId]
+    );
 
     return rows.length > 0;
 }
