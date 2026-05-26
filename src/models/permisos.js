@@ -301,65 +301,69 @@ async function responderPermiso(permisoId, estado, opciones = {}) {
     const permisoActual = rows[0];
 
     if (respondedor === 'supervisor') {
-        const estadoFinal = estado === 'rechazado'
-            ? 'rechazado'
-            : 'pendiente';
-
         await query(
             `
-            UPDATE permisos
-            SET
-                respuesta_supervisor = ?,
-                supervisor_usuarioId = ?,
-                fecha_respuesta_supervisor = NOW(),
-                comentario_supervisor = ?,
-                estado = ?
-            WHERE permisoId = ?
-            `,
+        UPDATE permisos
+        SET
+            respuesta_supervisor = ?,
+            supervisor_usuarioId = ?,
+            fecha_respuesta_supervisor = NOW(),
+            comentario_supervisor = ?,
+            estado = 'pendiente'
+        WHERE permisoId = ?
+        `,
             [
                 estado,
                 usuarioRespondedorId,
                 comentario || null,
-                estadoFinal,
                 permisoId,
             ]
         );
-
         return {
             success: true,
             message: estado === 'autorizado'
                 ? 'Permiso autorizado por supervisor. Pendiente de RH.'
-                : 'Permiso rechazado por supervisor.',
-            estado_final: estadoFinal,
+                : 'Permiso marcado como rechazado por supervisor. Pendiente de revisión final por RH.',
+            estado_final: 'pendiente',
         };
     }
 
     if (respondedor === 'rh') {
-        if (estado === 'autorizado' && permisoActual.respuesta_supervisor !== 'autorizado') {
+        if (!permisoActual.respuesta_supervisor) {
             return {
                 success: false,
-                message: 'El supervisor debe autorizar este permiso antes de RH',
+                message: 'El supervisor debe responder este permiso antes de RH',
             };
         }
-
-        if (estado === 'autorizado' && !['con_goce', 'sin_goce', 'repone_tiempo'].includes(goce_sueldo)) {
+        if (
+            estado === 'autorizado' &&
+            permisoActual.respuesta_supervisor !== 'autorizado'
+        ) {
+            return {
+                success: false,
+                message: 'No puedes autorizar un permiso rechazado por supervisor. Solo puedes rechazarlo o pedir revisión.',
+            };
+        }
+        if (
+            estado === 'autorizado' &&
+            !['con_goce', 'sin_goce', 'repone_tiempo'].includes(goce_sueldo)
+        ) {
             return {
                 success: false,
                 message: 'Selecciona el tipo de permiso',
             };
         }
-
         await query(
             `
-            UPDATE permisos
-            SET
-                estado = ?,
-                goce_sueldo = CASE
-                    WHEN ? = 'autorizado' THEN ?
-                    ELSE goce_sueldo
-                END
-            WHERE permisoId = ?
-            `,
+        UPDATE permisos
+        SET
+            estado = ?,
+            goce_sueldo = CASE
+                WHEN ? = 'autorizado' THEN ?
+                ELSE goce_sueldo
+            END
+        WHERE permisoId = ?
+        `,
             [
                 estado,
                 estado,
@@ -367,7 +371,6 @@ async function responderPermiso(permisoId, estado, opciones = {}) {
                 permisoId,
             ]
         );
-
         return {
             success: true,
             message: estado === 'autorizado'
@@ -375,8 +378,7 @@ async function responderPermiso(permisoId, estado, opciones = {}) {
                 : 'Permiso rechazado correctamente',
             estado_final: estado,
         };
-    }
-
+    }   
     return {
         success: false,
         message: 'Respondedor inválido',
