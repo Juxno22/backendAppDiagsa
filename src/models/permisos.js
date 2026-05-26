@@ -271,11 +271,7 @@ async function getPermisoById(permisoId) {
     return rows[0] || null;
 }
 
-async function responderPermiso(
-    permisoId,
-    estado,
-    opciones = {}
-) {
+async function responderPermiso(permisoId, estado, opciones = {}) {
     const {
         respondedor = 'rh',
         usuarioRespondedorId = null,
@@ -305,12 +301,12 @@ async function responderPermiso(
     const permisoActual = rows[0];
 
     if (respondedor === 'supervisor') {
-        const nuevoEstadoFinal = calcularEstadoPermiso({
-            respuesta_supervisor: estado,
-            estado_rh: permisoActual.estado,
-        });
+        const estadoFinal = estado === 'rechazado'
+            ? 'rechazado'
+            : 'pendiente';
 
-        await query(`
+        await query(
+            `
             UPDATE permisos
             SET
                 respuesta_supervisor = ?,
@@ -319,20 +315,22 @@ async function responderPermiso(
                 comentario_supervisor = ?,
                 estado = ?
             WHERE permisoId = ?
-        `, [
-            estado,
-            usuarioRespondedorId,
-            comentario || null,
-            nuevoEstadoFinal,
-            permisoId,
-        ]);
+            `,
+            [
+                estado,
+                usuarioRespondedorId,
+                comentario || null,
+                estadoFinal,
+                permisoId,
+            ]
+        );
 
         return {
             success: true,
             message: estado === 'autorizado'
                 ? 'Permiso autorizado por supervisor. Pendiente de RH.'
                 : 'Permiso rechazado por supervisor.',
-            estado_final: nuevoEstadoFinal,
+            estado_final: estadoFinal,
         };
     }
 
@@ -351,12 +349,8 @@ async function responderPermiso(
             };
         }
 
-        const nuevoEstadoFinal = calcularEstadoPermiso({
-            respuesta_supervisor: permisoActual.respuesta_supervisor,
-            estado_rh: estado,
-        });
-
-        await query(`
+        await query(
+            `
             UPDATE permisos
             SET
                 estado = ?,
@@ -365,19 +359,21 @@ async function responderPermiso(
                     ELSE goce_sueldo
                 END
             WHERE permisoId = ?
-        `, [
-            nuevoEstadoFinal,
-            estado,
-            goce_sueldo || null,
-            permisoId,
-        ]);
+            `,
+            [
+                estado,
+                estado,
+                goce_sueldo || null,
+                permisoId,
+            ]
+        );
 
         return {
             success: true,
             message: estado === 'autorizado'
                 ? 'Permiso autorizado correctamente'
                 : 'Permiso rechazado correctamente',
-            estado_final: nuevoEstadoFinal,
+            estado_final: estado,
         };
     }
 
