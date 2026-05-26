@@ -1,5 +1,6 @@
 // src/models/notificacionesRH.js
 const connection = require('../config/connection');
+const { fechaMexicoYYYYMMDD } = require('../utils/fecha');
 
 const query = (sql, values = []) =>
     new Promise((resolve, reject) => {
@@ -28,7 +29,7 @@ function fechaSQL(fecha) {
     const d = new Date(fecha);
     if (Number.isNaN(d.getTime())) return null;
 
-    return d.toISOString().split('T')[0];
+    return fechaMexicoYYYYMMDD();
 }
 function fechaEventoPorDias(dias = 0) {
     const fecha = new Date();

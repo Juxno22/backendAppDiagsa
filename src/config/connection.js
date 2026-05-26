@@ -33,6 +33,7 @@ const connection = mysql.createPool({
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
   connectTimeout: toNumber(process.env.DB_CONNECT_TIMEOUT, 10000),
+   timezone: '-06:00',
 });
 
 /*

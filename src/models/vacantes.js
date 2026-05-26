@@ -1,5 +1,6 @@
 // src/models/vacantes.js
 const connection = require('../config/connection');
+const { fechaMexicoYYYYMMDD } = require('../utils/fechas');
 const query = (sql, values = []) => new Promise((resolve, reject) => {
     connection.query(sql, values, (err, results) => err ? reject(err) : resolve(results));
 });
@@ -38,7 +39,7 @@ async function solicitarVacante(solicitanteId, datos) {
             origen_tabla: 'vacantes',
             origen_id: result.insertId,
             fecha_evento: fecha_requerida || new Date(),
-            fecha_notificar: new Date().toISOString().split('T')[0],
+            fecha_notificar: new Date().fechaMexicoYYYYMMDD(),
             enviarPush: false,
         });
     } catch (error) {

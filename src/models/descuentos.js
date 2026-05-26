@@ -10,11 +10,12 @@ const query = (sql, values = []) =>
     });
 
 function fechaLocalYYYYMMDD(fecha = new Date()) {
-    const d = new Date(fecha);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dia = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${dia}`;
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Mexico_City',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(fecha);
 }
 
 function ultimoDiaMes(year, monthIndex) {

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const connection = require("../config/connection");
+const { fechaMexicoYYYYMMDD } = require('../utils/fechas');
 const { authMiddleware, soloSupervisor, soloRH,
     soloMandos, soloRHAdmin, puedeVerDepartamento,
     ROL_RHADMIN, ROL_RH, ROL_SUPERVISOR,
@@ -18,8 +19,14 @@ const {
     SECCIONES_VALIDAS,
 } = require('../models/exportarBD');
 const {
-    crearPermiso, getPermisosByEmpleado, getTodosPermisos,
-    getPermisoById, responderPermiso, deletePermiso,
+    crearPermiso,
+    getPermisosByEmpleado,
+    getTodosPermisos,
+    getPermisosSupervisor,
+    getPermisoById,
+    usuarioPuedeResponderPermiso,
+    responderPermiso,
+    deletePermiso,
 } = require('../models/permisos');
 const {
     generarNotificaciones,
@@ -1744,10 +1751,109 @@ router.get("/rh/vacaciones/:id/excel", authMiddleware, async (req, res) => {
 // Empleado solicita permiso
 router.post('/empleados/permisos', authMiddleware, async (req, res) => {
     try {
-        const result = await crearPermiso(req.user.usuarioId, req.body);
-        res.status(201).json(result);
+        const usuarioId = req.user.usuarioId;
+
+        const result = await crearPermiso(usuarioId, req.body);
+
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+
+        const permisoId = result.permisoId;
+
+        try {
+            const empleadoRows = await query(`
+                SELECT
+                    u.usuarioId,
+                    u.nombre,
+                    u.apPaterno,
+                    u.apMaterno,
+                    u.usuario,
+                    u.sucursalId,
+                    u.departamentoId,
+                    COALESCE(d.nombre, u.departamento) AS departamento,
+                    s.nombre_sucursal
+                FROM usuarios u
+                LEFT JOIN departamentos d ON u.departamentoId = d.departamentoId
+                LEFT JOIN sucursales s ON u.sucursalId = s.sucursalId
+                WHERE u.usuarioId = ?
+                LIMIT 1
+            `, [usuarioId]);
+
+            const empleado = empleadoRows[0];
+
+            if (empleado) {
+                const nombreEmpleado = `${empleado.nombre || ''} ${empleado.apPaterno || ''} ${empleado.apMaterno || ''}`.trim();
+
+                const supervisores = await query(`
+                    SELECT DISTINCT
+                        sup.usuarioId
+                    FROM usuarios emp
+                    INNER JOIN usuario_accesos ua
+                        ON ua.sucursalId = emp.sucursalId
+                       AND ua.activo = 1
+                       AND (
+                            ua.departamentoId IS NULL
+                            OR ua.departamentoId = emp.departamentoId
+                       )
+                    INNER JOIN usuarios sup
+                        ON sup.usuarioId = ua.usuarioId
+                    WHERE emp.usuarioId = ?
+                      AND sup.rolId = ?
+                      AND sup.usuarioId <> emp.usuarioId
+                `, [usuarioId, ROL_SUPERVISOR]);
+
+                for (const supervisor of supervisores) {
+                    await query(`
+                        INSERT INTO mensajes_internos (
+                            remitenteId,
+                            destinatarioId,
+                            tipo,
+                            titulo,
+                            mensaje,
+                            url,
+                            prioridad,
+                            estado,
+                            fecha_recordatorio,
+                            fecha_limite
+                        )
+                        VALUES (
+                            ?,
+                            ?,
+                            'permiso',
+                            'Solicitud de permiso pendiente',
+                            ?,
+                            '/supervisor/permisos',
+                            'alta',
+                            'pendiente',
+                            CURDATE(),
+                            ?
+                        )
+                    `, [
+                        usuarioId,
+                        supervisor.usuarioId,
+                        `${nombreEmpleado} solicitó un permiso. Favor de revisar la solicitud.`,
+                        req.body.fecha_permiso || req.body.fecha_inicio || req.body.dia_permiso || null,
+                    ]);
+                }
+
+                console.log('[POST /empleados/permisos] supervisores notificados:', supervisores.length);
+            }
+        } catch (error) {
+            console.error('[POST /empleados/permisos] Error notificando supervisor:', error);
+        }
+
+        return res.status(201).json({
+            ...result,
+            message: 'Permiso solicitado correctamente. Pendiente de autorización del supervisor.',
+        });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error('[POST /empleados/permisos]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al solicitar permiso',
+        });
     }
 });
 
@@ -1758,6 +1864,67 @@ router.get('/empleados/permisos', authMiddleware, async (req, res) => {
         res.json({ success: true, data: permisos });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Supervisor ve permisos de sus departamentos asignados
+router.get('/supervisor/permisos', authMiddleware, async (req, res) => {
+    try {
+        const permisos = await getPermisosSupervisor(req.user.usuarioId);
+
+        return res.json({
+            success: true,
+            data: permisos,
+        });
+    } catch (error) {
+        console.error('[GET /supervisor/permisos]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al obtener permisos',
+        });
+    }
+});
+
+// Supervisor responde permiso
+router.patch('/supervisor/permisos/:id/responder', authMiddleware, async (req, res) => {
+    try {
+        const permisoId = Number(req.params.id);
+        const { estado, comentario } = req.body;
+
+        if (!['autorizado', 'rechazado'].includes(estado)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Estado inválido',
+            });
+        }
+
+        const tieneAcceso = await usuarioPuedeResponderPermiso(
+            req.user.usuarioId,
+            permisoId
+        );
+
+        if (!tieneAcceso) {
+            return res.status(403).json({
+                success: false,
+                message: 'No tienes acceso a esta solicitud de permiso',
+            });
+        }
+
+        const result = await responderPermiso(permisoId, estado, {
+            respondedor: 'supervisor',
+            usuarioRespondedorId: req.user.usuarioId,
+            comentario: comentario || null,
+        });
+
+        return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+        console.error('[PATCH /supervisor/permisos/:id/responder]', error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Error al responder permiso',
+        });
     }
 });
 
@@ -1774,29 +1941,29 @@ router.get('/rh/permisos', authMiddleware, async (req, res) => {
 // RH responde permiso
 router.patch('/rh/permisos/:id/responder', authMiddleware, async (req, res) => {
     try {
-        const { estado, goce_sueldo } = req.body;
+        const { estado, goce_sueldo, comentario } = req.body;
+
         if (!['autorizado', 'rechazado'].includes(estado)) {
             return res.status(400).json({
                 success: false,
                 message: 'Estado inválido',
             });
         }
-        if (estado === 'autorizado' && !['con_goce', 'sin_goce', 'repone_tiempo'].includes(goce_sueldo)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Selecciona el tipo de permiso',
-            });
-        }
-        const result = await responderPermiso(
-            Number(req.params.id),
-            estado,
-            estado === 'autorizado' ? goce_sueldo : null
-        );
-        res.json(result);
+
+        const result = await responderPermiso(Number(req.params.id), estado, {
+            respondedor: 'rh',
+            usuarioRespondedorId: req.user.usuarioId,
+            goce_sueldo: estado === 'autorizado' ? goce_sueldo : null,
+            comentario: comentario || null,
+        });
+
+        return res.status(result.success ? 200 : 400).json(result);
     } catch (error) {
-        res.status(500).json({
+        console.error('[PATCH /rh/permisos/:id/responder]', error);
+
+        return res.status(500).json({
             success: false,
-            message: error.message,
+            message: error.message || 'Error al responder permiso',
         });
     }
 });
@@ -2097,7 +2264,7 @@ router.get('/rh/exportar-bd', authMiddleware, async (req, res) => {
             req.ip || req.headers['x-forwarded-for'] || null
         );
 
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().fechaMexicoYYYYMMDD();
 
         const partes = [`DIAGSA_${String(seccion).toUpperCase()}`];
 
@@ -2146,7 +2313,7 @@ router.get('/rh/exportar-bd/empleado/:usuarioId', authMiddleware, async (req, re
             req.ip || req.headers['x-forwarded-for'] || null
         );
 
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().fechaMexicoYYYYMMDD();
         const nombreArchivo = `DIAGSA_EXPEDIENTE_EMPLEADO_${usuarioId}_${fecha}.xlsx`;
 
         res.setHeader(
@@ -2181,7 +2348,7 @@ router.get('/rh/exportar-bd/contrato/:usuarioId', authMiddleware, async (req, re
             req.ip || req.headers['x-forwarded-for'] || null
         );
 
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = new Date().fechaMexicoYYYYMMDD();
         const nombreArchivo = `DIAGSA_CONTRATO_${usuarioId}_${fecha}.xlsx`;
 
         res.setHeader(
