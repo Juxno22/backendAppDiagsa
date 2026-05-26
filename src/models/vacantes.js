@@ -1,6 +1,6 @@
 // src/models/vacantes.js
 const connection = require('../config/connection');
-const { fechaMexicoYYYYMMDD } = require('../utils/fechas');
+const { fechaMexicoYYYYMMDD } = require('../utils/fecha');
 const query = (sql, values = []) => new Promise((resolve, reject) => {
     connection.query(sql, values, (err, results) => err ? reject(err) : resolve(results));
 });

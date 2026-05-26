@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const connection = require("../config/connection");
-const { fechaMexicoYYYYMMDD } = require('../utils/fechas');
+const { fechaMexicoYYYYMMDD } = require('../utils/fecha');
 const { authMiddleware, soloSupervisor, soloRH,
     soloMandos, soloRHAdmin, puedeVerDepartamento,
     ROL_RHADMIN, ROL_RH, ROL_SUPERVISOR,
