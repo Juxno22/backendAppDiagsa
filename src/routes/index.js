@@ -1841,6 +1841,29 @@ router.post('/empleados/permisos', authMiddleware, async (req, res) => {
 
         const permisoId = result.permisoId;
 
+        const rolSolicitante = Number(req.user.rolId);
+
+        if (rolSolicitante === ROL_SUPERVISOR) {
+            await query(
+                `
+        UPDATE permisos
+        SET
+            respuesta_supervisor = 'autorizado',
+            supervisor_usuarioId = ?,
+            fecha_respuesta_supervisor = NOW(),
+            comentario_supervisor = 'No aplica autorización de supervisor. Solicitud directa a RH.',
+            estado = 'pendiente'
+        WHERE permisoId = ?
+        `,
+                [usuarioId, permisoId]
+            );
+
+            return res.status(201).json({
+                ...result,
+                message: 'Permiso solicitado correctamente. Pendiente de autorización de RH.',
+            });
+        }
+
         try {
             const empleadoRows = await query(`
                 SELECT

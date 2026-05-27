@@ -212,6 +212,7 @@ async function getPermisosSupervisor(usuarioSupervisorId) {
         LEFT JOIN departamentos d
             ON u.departamentoId = d.departamentoId
         WHERE u.usuarioId <> ?
+            AND u.rolId <> 2
         ORDER BY p.fecha_elaboracion DESC, p.permisoId DESC
         `,
         [usuarioSupervisorId, usuarioSupervisorId]
@@ -236,6 +237,7 @@ async function usuarioPuedeResponderPermiso(usuarioSupervisorId, permisoId) {
            )
         WHERE p.permisoId = ?
           AND u.usuarioId <> ?
+          AND u.rolId <> 2
         LIMIT 1
         `,
         [usuarioSupervisorId, permisoId, usuarioSupervisorId]
