@@ -942,43 +942,50 @@ router.patch(
     "/supervisor/vacaciones/:id/responder",
     authMiddleware,
     async (req, res) => {
-        console.log("Body recibido:", req.body); // ← agrega esta línea
-        console.log("Params:", req.params); // ← y esta
         try {
             const { id } = req.params;
-            const { respuesta, rol } = req.body;
-            if (isNaN(id)) {
+            const { respuesta } = req.body;
+            const vacacionesId = Number(id);
+            const rolId = Number(req.user?.rolId);
+            if (!Number.isFinite(vacacionesId)) {
                 return res.status(400).json({
                     success: false,
-                    message: "Id erroneo",
-                });
-            }
-            if (!respuesta || !rol) {
-                return res.status(400).json({
-                    success: false,
-                    message: "CCampos faltantes",
+                    message: "Id erróneo",
                 });
             }
             if (!["Aceptadas", "Denegadas"].includes(respuesta)) {
                 return res.status(400).json({
                     success: false,
-                    message: "respuestas erroneas",
+                    message: "Respuesta inválida",
                 });
             }
-            const tieneAcceso = await usuarioPuedeVerVacacion(req, Number(id));
-
+            let rolRespondedor = null;
+            if ([ROL_RH, ROL_RHADMIN].includes(rolId)) {
+                rolRespondedor = "rh";
+            } else if (rolId === ROL_SUPERVISOR) {
+                rolRespondedor = "jefe";
+            } else {
+                return res.status(403).json({
+                    success: false,
+                    message: "No tienes permisos para responder vacaciones",
+                });
+            }
+            const tieneAcceso = await usuarioPuedeVerVacacion(req, vacacionesId);
             if (!tieneAcceso) {
                 return res.status(403).json({
                     success: false,
                     message: "No tienes acceso a esta solicitud de vacaciones",
                 });
             }
-            const result = await responderVacaciones(id, respuesta, rol);
-            const statusCode = result.success ? 200 : 400;
-            res.status(statusCode).json(result);
+            const result = await responderVacaciones(
+                vacacionesId,
+                respuesta,
+                rolRespondedor
+            );
+            return res.status(result.success ? 200 : 400).json(result);
         } catch (error) {
             console.error("Error al responder vacaciones", error);
-            res.status(400).json({
+            return res.status(500).json({
                 success: false,
                 message: error.message || "Error interno",
             });
